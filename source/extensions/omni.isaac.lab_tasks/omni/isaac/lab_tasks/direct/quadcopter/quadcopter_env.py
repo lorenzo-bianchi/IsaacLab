@@ -17,7 +17,7 @@ from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
-from omni.isaac.lab.utils.math import subtract_frame_transforms
+from omni.isaac.lab.utils.math import subtract_frame_transforms, euler_xyz_from_quat
 
 ##
 # Pre-defined configs
@@ -120,6 +120,7 @@ class QuadcopterEnv(DirectRLEnv):
                 "lin_vel",
                 "ang_vel",
                 "distance_to_goal",
+                "yaw",
             ]
         }
         # Get specific body indices
@@ -174,10 +175,16 @@ class QuadcopterEnv(DirectRLEnv):
         ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
         distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
+
+        # yaw_des = torch.atan2(self._desired_pos_w[:, 1], self._desired_pos_w[:, 0], dim =1)
+        quat_w = self._robot.data.root_quat_w
+        yaw_w = euler_xyz_from_quat(quat_w)[2]
+
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
             "distance_to_goal": distance_to_goal_mapped * self.cfg.distance_to_goal_reward_scale * self.step_dt,
+            "yaw": yaw_w * self.cfg.yaw_reward_scale * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging
@@ -185,13 +192,13 @@ class QuadcopterEnv(DirectRLEnv):
             self._episode_sums[key] += value
 
         # Check if drone is within the proximity threshold
-        close_to_goal = distance_to_goal < self.cfg.proximity_threshold
-        if torch.any(close_to_goal):
-            # Update goal position for environments that are close to the goal
-            env_ids = torch.where(close_to_goal)[0]
-            self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
-            self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
-            self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
+        # close_to_goal = distance_to_goal < self.cfg.proximity_threshold
+        # if torch.any(close_to_goal):
+        #     # Update goal position for environments that are close to the goal
+        #     env_ids = torch.where(close_to_goal)[0]
+        #     self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
+        #     self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
+        #     self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
 
         return reward
 
