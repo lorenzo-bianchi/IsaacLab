@@ -21,6 +21,7 @@ from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.math import subtract_frame_transforms, euler_xyz_from_quat
 
 from matplotlib import pyplot as plt
+from collections import deque
 
 ##
 # Pre-defined configs
@@ -117,6 +118,35 @@ class QuadcopterEnv(DirectRLEnv):
         # Goal position
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
 
+        # Get mode
+        if self.num_envs > 1:
+            self.is_train = True
+        else:
+            self.is_train = False
+            cfg.episode_length_s = 100.0
+            self.max_len_deque = 100
+            self.roll_history = deque(maxlen=self.max_len_deque)
+            self.pitch_history = deque(maxlen=self.max_len_deque)
+            self.yaw_history = deque(maxlen=self.max_len_deque)
+            self.n_laps = 0
+            self.n_steps = 0
+            self.last_yaw = 0.0
+            self.rpy_fig, self.rpy_axes = plt.subplots(3, 1, figsize=(10, 8))
+            self.roll_line, = self.rpy_axes[0].plot([], [], 'r', label="Roll")
+            self.pitch_line, = self.rpy_axes[1].plot([], [], 'g', label="Pitch")
+            self.yaw_line, = self.rpy_axes[2].plot([], [], 'b', label="Yaw")
+
+            # Configure subplots
+            for ax, title in zip(self.rpy_axes, ["Roll History", "Pitch History", "Yaw History"]):
+                ax.set_title(title)
+                ax.set_xlabel("Time Step")
+                ax.set_ylabel("Angle (rad)")
+                ax.legend(loc="upper left")
+                ax.grid(True)
+
+            plt.tight_layout()
+            plt.ion()  # interactive mode
+
         # Logging
         self._episode_sums = {
             key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
@@ -135,11 +165,6 @@ class QuadcopterEnv(DirectRLEnv):
 
         # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
         self.set_debug_vis(self.cfg.debug_vis)
-
-        self.roll_history: np.ndarray = np.array([])
-        self.pitch_history: np.ndarray = np.array([])
-        self.yaw_history: np.ndarray = np.array([])
-        self.n_laps = 0
 
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
@@ -183,71 +208,42 @@ class QuadcopterEnv(DirectRLEnv):
         )
         observations = {"policy": obs}
 
-        # # Plots
-        # # Calcola gli angoli di roll, pitch e yaw
-        # rpy = euler_xyz_from_quat(self._robot.data.root_quat_w)
-        # current_roll = (rpy[0] + np.pi) % (2 * np.pi) - np.pi  # Clipping tra -pi e pi
-        # current_pitch = (rpy[1] + np.pi) % (2 * np.pi) - np.pi  # Clipping tra -pi e pi
-        # current_yaw = rpy[2]
+        if not self.is_train:
+            # RPY plots
+            rpy = euler_xyz_from_quat(self._robot.data.root_quat_w)
+            current_roll = (rpy[0] + np.pi) % (2 * np.pi) - np.pi  # clipping in [-pi, pi]
+            current_pitch = (rpy[1] + np.pi) % (2 * np.pi) - np.pi  # clipping in [-pi, pi]
+            current_yaw = rpy[2]
 
-        # # Inizializza le variabili se non esistono
-        # if not hasattr(self, 'last_yaw'):
-        #     self.last_yaw = current_yaw
-        #     self.roll_history = []
-        #     self.pitch_history = []
-        #     self.yaw_history = []
+            delta_yaw = current_yaw - self.last_yaw
+            if delta_yaw > np.pi:
+                self.n_laps -= 1
+            elif delta_yaw < -np.pi:
+                self.n_laps += 1
 
-        # # Calcola la variazione dello yaw
-        # delta_yaw = current_yaw - self.last_yaw
+            unwrapped_yaw = current_yaw + 2 * np.pi * self.n_laps
 
-        # # Aggiorna il contatore dei giri
-        # if delta_yaw > np.pi:
-        #     self.n_laps -= 1
-        # elif delta_yaw < -np.pi:
-        #     self.n_laps += 1
+            self.roll_history.append(current_roll)
+            self.pitch_history.append(current_pitch)
+            self.yaw_history.append(unwrapped_yaw)
 
-        # # Calcola lo yaw non clippato
-        # unwrapped_yaw = current_yaw + 2 * np.pi * self.n_laps
+            self.last_yaw = current_yaw
 
-        # # Aggiorna lo storico degli angoli
-        # self.roll_history.append(current_roll)
-        # self.pitch_history.append(current_pitch)
-        # self.yaw_history.append(unwrapped_yaw)
+            self.n_steps += 1
+            if self.n_steps >= self.max_len_deque:
+                steps = np.arange(self.n_steps - self.max_len_deque, self.n_steps)
+            else:
+                steps = np.arange(self.n_steps)
+            self.roll_line.set_data(steps, self.roll_history)
+            self.pitch_line.set_data(steps, self.pitch_history)
+            self.yaw_line.set_data(steps, self.yaw_history)
 
-        # # Aggiorna il valore di yaw precedente
-        # self.last_yaw = current_yaw
+            for ax in self.rpy_axes:
+                ax.relim()
+                ax.autoscale_view()
 
-        # # Grafico degli angoli
-        # if not hasattr(self, 'rpy_fig'):
-        #     self.rpy_fig, self.rpy_axes = plt.subplots(3, 1, figsize=(10, 8))
-        #     self.roll_line, = self.rpy_axes[0].plot([], [], 'r', label="Roll")  # Rosso
-        #     self.pitch_line, = self.rpy_axes[1].plot([], [], 'g', label="Pitch")  # Verde
-        #     self.yaw_line, = self.rpy_axes[2].plot([], [], 'b', label="Yaw")  # Blu
-
-        #     # Configura i subplot
-        #     for ax, title in zip(self.rpy_axes, ["Roll History", "Pitch History", "Yaw History"]):
-        #         ax.set_title(title)
-        #         ax.set_xlabel("Time Step")
-        #         ax.set_ylabel("Angle (rad)")
-        #         ax.legend(loc="upper left")  # Legenda in alto a sinistra
-        #         ax.grid(True)  # Aggiunta della griglia
-
-        #     plt.tight_layout()
-        #     plt.ion()  # Modalità interattiva
-
-        # # Aggiorna i dati dei grafici
-        # steps = range(len(self.roll_history))
-        # self.roll_line.set_data(steps, self.roll_history)
-        # self.pitch_line.set_data(steps, self.pitch_history)
-        # self.yaw_line.set_data(steps, self.yaw_history)
-
-        # # Aggiorna i limiti e ridisegna
-        # for ax in self.rpy_axes:
-        #     ax.relim()
-        #     ax.autoscale_view()
-
-        # plt.draw()
-        # plt.pause(0.001)
+            plt.draw()
+            plt.pause(0.001)
 
         return observations
 
@@ -261,12 +257,15 @@ class QuadcopterEnv(DirectRLEnv):
         # yaw_des = torch.atan2(self._desired_pos_w[:, 1], self._desired_pos_w[:, 0], dim =1)
         quat_w = self._robot.data.root_quat_w
         yaw_w = euler_xyz_from_quat(quat_w)[2]
+        yaw_w_mapped = torch.exp(-10.0 * torch.abs(yaw_w))
+
+        print("yaw_w: ", yaw_w)
 
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
             "distance_to_goal": distance_to_goal_mapped * self.cfg.distance_to_goal_reward_scale * self.step_dt,
-            "yaw": yaw_w * self.cfg.yaw_reward_scale * self.step_dt,
+            "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         # Logging
@@ -286,9 +285,7 @@ class QuadcopterEnv(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        died = torch.logical_or(
-            self._robot.data.root_link_pos_w[:, 2] < 0.1, self._robot.data.root_link_pos_w[:, 2] > 2.0
-        )
+        died = torch.logical_or(self._robot.data.root_link_pos_w[:, 2] < 0.1, self._robot.data.root_link_pos_w[:, 2] > 2.0)
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
