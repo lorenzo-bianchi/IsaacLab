@@ -18,7 +18,7 @@ from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
-from omni.isaac.lab.utils.math import subtract_frame_transforms, euler_xyz_from_quat
+from omni.isaac.lab.utils.math import subtract_frame_transforms, euler_xyz_from_quat, wrap_to_pi
 
 from matplotlib import pyplot as plt
 from collections import deque
@@ -96,7 +96,6 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     robot: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     thrust_to_weight = 1.9
     moment_scale = 0.01
-    proximity_threshold = 0.1
 
     # reward scales
     lin_vel_reward_scale = -0.05
@@ -123,8 +122,9 @@ class QuadcopterEnv(DirectRLEnv):
             self.is_train = True
         else:
             self.is_train = False
+            self.proximity_threshold = 0.2
             cfg.episode_length_s = 100.0
-            self.max_len_deque = 100
+            self.max_len_deque = 1000
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
             self.yaw_history = deque(maxlen=self.max_len_deque)
@@ -194,7 +194,8 @@ class QuadcopterEnv(DirectRLEnv):
         )
 
         quat_w = self._robot.data.root_quat_w
-        yaw_w = euler_xyz_from_quat(quat_w)[2]
+        rpy = euler_xyz_from_quat(quat_w)
+        yaw_w = wrap_to_pi(rpy[2])
 
         obs = torch.cat(
             [
@@ -210,24 +211,22 @@ class QuadcopterEnv(DirectRLEnv):
 
         if not self.is_train:
             # RPY plots
-            rpy = euler_xyz_from_quat(self._robot.data.root_quat_w)
-            current_roll = (rpy[0] + np.pi) % (2 * np.pi) - np.pi  # clipping in [-pi, pi]
-            current_pitch = (rpy[1] + np.pi) % (2 * np.pi) - np.pi  # clipping in [-pi, pi]
-            current_yaw = rpy[2]
+            roll_w = (rpy[0] + np.pi) % (2 * np.pi) - np.pi  # clipping in [-pi, pi]
+            pitch_w = (rpy[1] + np.pi) % (2 * np.pi) - np.pi  # clipping in [-pi, pi]
 
-            delta_yaw = current_yaw - self.last_yaw
+            delta_yaw = yaw_w - self.last_yaw
             if delta_yaw > np.pi:
                 self.n_laps -= 1
             elif delta_yaw < -np.pi:
                 self.n_laps += 1
 
-            unwrapped_yaw = current_yaw + 2 * np.pi * self.n_laps
+            unwrapped_yaw = yaw_w + 2 * np.pi * self.n_laps
 
-            self.roll_history.append(current_roll)
-            self.pitch_history.append(current_pitch)
+            self.roll_history.append(roll_w)
+            self.pitch_history.append(pitch_w)
             self.yaw_history.append(unwrapped_yaw)
 
-            self.last_yaw = current_yaw
+            self.last_yaw = yaw_w
 
             self.n_steps += 1
             if self.n_steps >= self.max_len_deque:
@@ -259,8 +258,6 @@ class QuadcopterEnv(DirectRLEnv):
         yaw_w = euler_xyz_from_quat(quat_w)[2]
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(yaw_w))
 
-        print("yaw_w: ", yaw_w)
-
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
@@ -273,7 +270,7 @@ class QuadcopterEnv(DirectRLEnv):
             self._episode_sums[key] += value
 
         # Check if drone is within the proximity threshold
-        close_to_goal = distance_to_goal < self.cfg.proximity_threshold
+        close_to_goal = distance_to_goal < self.proximity_threshold
         if torch.any(close_to_goal):
             # Update goal position for environments that are close to the goal
             env_ids = torch.where(close_to_goal)[0]
