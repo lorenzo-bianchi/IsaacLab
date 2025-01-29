@@ -269,14 +269,15 @@ class QuadcopterEnv(DirectRLEnv):
         for key, value in rewards.items():
             self._episode_sums[key] += value
 
-        # Check if drone is within the proximity threshold
-        close_to_goal = distance_to_goal < self.proximity_threshold
-        if torch.any(close_to_goal):
-            # Update goal position for environments that are close to the goal
-            env_ids = torch.where(close_to_goal)[0]
-            self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
-            self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
-            self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
+        if not self.is_train:
+            # Check if drone is within the proximity threshold
+            close_to_goal = distance_to_goal < self.proximity_threshold
+            if torch.any(close_to_goal):
+                # Update goal position for environments that are close to the goal
+                env_ids = torch.where(close_to_goal)[0]
+                self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
+                self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
+                self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
 
         return reward
 
