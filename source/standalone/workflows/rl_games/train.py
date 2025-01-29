@@ -20,12 +20,11 @@ parser.add_argument("--video_interval", type=int, default=2000, help="Interval b
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
-parser.add_argument(
-    "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
-)
+parser.add_argument("--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes.")
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
 parser.add_argument("--sigma", type=str, default=None, help="The policy's initial standard deviation.")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
+parser.add_argument("--wandb", action="store_true", default=False, help="Track progresses with wandb.")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -69,6 +68,7 @@ import omni.isaac.lab_tasks  # noqa: F401
 from omni.isaac.lab_tasks.utils.hydra import hydra_task_config
 from omni.isaac.lab_tasks.utils.wrappers.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper
 
+import wandb
 
 @hydra_task_config(args_cli.task, "rl_games_cfg_entry_point")
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
@@ -116,6 +116,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg["params"]["config"]["train_dir"] = log_root_path
     agent_cfg["params"]["config"]["full_experiment_name"] = log_dir
 
+    # initialize wandb
+    if args_cli.wandb:
+        wandb.init(
+            project="rl_games",
+            entity=None,
+            sync_tensorboard=True,
+            # config=config,
+            monitor_gym=True,
+            save_code=True,
+        )
+
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_root_path, log_dir, "params", "env.yaml"), env_cfg)
     dump_yaml(os.path.join(log_root_path, log_dir, "params", "agent.yaml"), agent_cfg)
@@ -162,6 +173,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     runner = Runner(IsaacAlgoObserver())
     runner.load(agent_cfg)
 
+
     # reset the agent and env
     runner.reset()
     # train the agent
@@ -169,6 +181,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         runner.run({"train": True, "play": False, "sigma": train_sigma, "checkpoint": resume_path})
     else:
         runner.run({"train": True, "play": False, "sigma": train_sigma})
+
+    # close wandb
+    if args_cli.wandb:
+        wandb.finish()
 
     # close the simulator
     env.close()
