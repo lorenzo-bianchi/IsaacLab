@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import gymnasium as gym
 import torch
+import numpy as np
 
 import omni.isaac.lab.sim as sim_utils
 from omni.isaac.lab.assets import Articulation, ArticulationCfg
@@ -18,6 +19,8 @@ from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
 from omni.isaac.lab.utils.math import subtract_frame_transforms, euler_xyz_from_quat
+
+from matplotlib import pyplot as plt
 
 ##
 # Pre-defined configs
@@ -52,7 +55,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     episode_length_s = 10.0
     decimation = 2
     action_space = 4
-    observation_space = 12
+    observation_space = 13
     state_space = 0
     debug_vis = True
 
@@ -133,6 +136,11 @@ class QuadcopterEnv(DirectRLEnv):
         # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
         self.set_debug_vis(self.cfg.debug_vis)
 
+        self.roll_history: np.ndarray = np.array([])
+        self.pitch_history: np.ndarray = np.array([])
+        self.yaw_history: np.ndarray = np.array([])
+        self.n_laps = 0
+
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
         self.scene.articulations["robot"] = self._robot
@@ -159,17 +167,90 @@ class QuadcopterEnv(DirectRLEnv):
         desired_pos_b, _ = subtract_frame_transforms(
             self._robot.data.root_link_state_w[:, :3], self._robot.data.root_link_state_w[:, 3:7], self._desired_pos_w
         )
+
+        quat_w = self._robot.data.root_quat_w
+        yaw_w = euler_xyz_from_quat(quat_w)[2]
+
         obs = torch.cat(
             [
                 self._robot.data.root_com_lin_vel_b,
                 self._robot.data.root_com_ang_vel_b,
                 self._robot.data.projected_gravity_b,
                 desired_pos_b,
+                yaw_w.unsqueeze(1),
             ],
             dim=-1,
         )
         observations = {"policy": obs}
+
+        # # Plots
+        # # Calcola gli angoli di roll, pitch e yaw
+        # rpy = euler_xyz_from_quat(self._robot.data.root_quat_w)
+        # current_roll = (rpy[0] + np.pi) % (2 * np.pi) - np.pi  # Clipping tra -pi e pi
+        # current_pitch = (rpy[1] + np.pi) % (2 * np.pi) - np.pi  # Clipping tra -pi e pi
+        # current_yaw = rpy[2]
+
+        # # Inizializza le variabili se non esistono
+        # if not hasattr(self, 'last_yaw'):
+        #     self.last_yaw = current_yaw
+        #     self.roll_history = []
+        #     self.pitch_history = []
+        #     self.yaw_history = []
+
+        # # Calcola la variazione dello yaw
+        # delta_yaw = current_yaw - self.last_yaw
+
+        # # Aggiorna il contatore dei giri
+        # if delta_yaw > np.pi:
+        #     self.n_laps -= 1
+        # elif delta_yaw < -np.pi:
+        #     self.n_laps += 1
+
+        # # Calcola lo yaw non clippato
+        # unwrapped_yaw = current_yaw + 2 * np.pi * self.n_laps
+
+        # # Aggiorna lo storico degli angoli
+        # self.roll_history.append(current_roll)
+        # self.pitch_history.append(current_pitch)
+        # self.yaw_history.append(unwrapped_yaw)
+
+        # # Aggiorna il valore di yaw precedente
+        # self.last_yaw = current_yaw
+
+        # # Grafico degli angoli
+        # if not hasattr(self, 'rpy_fig'):
+        #     self.rpy_fig, self.rpy_axes = plt.subplots(3, 1, figsize=(10, 8))
+        #     self.roll_line, = self.rpy_axes[0].plot([], [], 'r', label="Roll")  # Rosso
+        #     self.pitch_line, = self.rpy_axes[1].plot([], [], 'g', label="Pitch")  # Verde
+        #     self.yaw_line, = self.rpy_axes[2].plot([], [], 'b', label="Yaw")  # Blu
+
+        #     # Configura i subplot
+        #     for ax, title in zip(self.rpy_axes, ["Roll History", "Pitch History", "Yaw History"]):
+        #         ax.set_title(title)
+        #         ax.set_xlabel("Time Step")
+        #         ax.set_ylabel("Angle (rad)")
+        #         ax.legend(loc="upper left")  # Legenda in alto a sinistra
+        #         ax.grid(True)  # Aggiunta della griglia
+
+        #     plt.tight_layout()
+        #     plt.ion()  # Modalità interattiva
+
+        # # Aggiorna i dati dei grafici
+        # steps = range(len(self.roll_history))
+        # self.roll_line.set_data(steps, self.roll_history)
+        # self.pitch_line.set_data(steps, self.pitch_history)
+        # self.yaw_line.set_data(steps, self.yaw_history)
+
+        # # Aggiorna i limiti e ridisegna
+        # for ax in self.rpy_axes:
+        #     ax.relim()
+        #     ax.autoscale_view()
+
+        # plt.draw()
+        # plt.pause(0.001)
+
         return observations
+
 
     def _get_rewards(self) -> torch.Tensor:
         lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
@@ -193,13 +274,13 @@ class QuadcopterEnv(DirectRLEnv):
             self._episode_sums[key] += value
 
         # Check if drone is within the proximity threshold
-        # close_to_goal = distance_to_goal < self.cfg.proximity_threshold
-        # if torch.any(close_to_goal):
-        #     # Update goal position for environments that are close to the goal
-        #     env_ids = torch.where(close_to_goal)[0]
-        #     self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
-        #     self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
-        #     self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
+        close_to_goal = distance_to_goal < self.cfg.proximity_threshold
+        if torch.any(close_to_goal):
+            # Update goal position for environments that are close to the goal
+            env_ids = torch.where(close_to_goal)[0]
+            self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
+            self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
+            self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
 
         return reward
 
@@ -250,6 +331,8 @@ class QuadcopterEnv(DirectRLEnv):
         self._robot.write_root_link_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_com_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+
+        self.n_laps = 0
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # create markers if necessary for the first time
