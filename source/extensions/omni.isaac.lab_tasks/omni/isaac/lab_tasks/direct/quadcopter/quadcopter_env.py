@@ -101,7 +101,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     lin_vel_reward_scale = -0.05
     ang_vel_reward_scale = -0.01
     distance_to_goal_reward_scale = 15.0
-    yaw_reward_scale = 0.01
+    yaw_reward_scale = 0.1
 
 
 class QuadcopterEnv(DirectRLEnv):
@@ -211,8 +211,8 @@ class QuadcopterEnv(DirectRLEnv):
 
         if not self.is_train:
             # RPY plots
-            roll_w = (rpy[0] + np.pi) % (2 * np.pi) - np.pi  # clipping in [-pi, pi]
-            pitch_w = (rpy[1] + np.pi) % (2 * np.pi) - np.pi  # clipping in [-pi, pi]
+            roll_w = wrap_to_pi(rpy[0])
+            pitch_w = wrap_to_pi(rpy[1])
 
             delta_yaw = yaw_w - self.last_yaw
             if delta_yaw > np.pi:
@@ -246,7 +246,6 @@ class QuadcopterEnv(DirectRLEnv):
 
         return observations
 
-
     def _get_rewards(self) -> torch.Tensor:
         lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
         ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
@@ -255,7 +254,7 @@ class QuadcopterEnv(DirectRLEnv):
 
         # yaw_des = torch.atan2(self._desired_pos_w[:, 1], self._desired_pos_w[:, 0], dim =1)
         quat_w = self._robot.data.root_quat_w
-        yaw_w = euler_xyz_from_quat(quat_w)[2]
+        yaw_w = wrap_to_pi(euler_xyz_from_quat(quat_w)[2])
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(yaw_w))
 
         rewards = {
