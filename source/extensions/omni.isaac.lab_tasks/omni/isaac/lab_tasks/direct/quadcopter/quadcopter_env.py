@@ -118,9 +118,8 @@ class QuadcopterEnv(DirectRLEnv):
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
 
         self.last_yaw = 0.0
-        self.n_laps = 0
-        
-        
+        self.n_laps = torch.zeros(self.num_envs, device=self.device)
+
         # Get mode
         if self.num_envs > 1:
             self.is_train = True
@@ -323,7 +322,7 @@ class QuadcopterEnv(DirectRLEnv):
         self._robot.write_root_com_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
-        self.n_laps = 0
+        self.n_laps[env_ids] = 0
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # create markers if necessary for the first time
