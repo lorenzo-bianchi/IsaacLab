@@ -56,7 +56,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     episode_length_s = 10.0
     decimation = 2
     action_space = 4
-    observation_space = 13
+    observation_space = 12+1+4
     state_space = 0
     debug_vis = True
 
@@ -102,6 +102,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     ang_vel_reward_scale = -0.01
     distance_to_goal_reward_scale = 15.0
     yaw_reward_scale = 4.0
+    smooth_reward_scale = -1e-3
 
 
 class QuadcopterEnv(DirectRLEnv):
@@ -119,6 +120,8 @@ class QuadcopterEnv(DirectRLEnv):
 
         self.last_yaw = 0.0
         self.n_laps = torch.zeros(self.num_envs, device=self.device)
+
+        self.last_actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
 
         # Get mode
         if self.num_envs > 1:
@@ -141,7 +144,7 @@ class QuadcopterEnv(DirectRLEnv):
             for ax, title in zip(self.rpy_axes, ["Roll History", "Pitch History", "Yaw History"]):
                 ax.set_title(title)
                 ax.set_xlabel("Time Step")
-                ax.set_ylabel("Angle (rad)")
+                ax.set_ylabel("Angle (°)")
                 ax.legend(loc="upper left")
                 ax.grid(True)
 
@@ -156,6 +159,7 @@ class QuadcopterEnv(DirectRLEnv):
                 "ang_vel",
                 "distance_to_goal",
                 "yaw",
+                "smooth",
             ]
         }
         # Get specific body indices
@@ -212,6 +216,7 @@ class QuadcopterEnv(DirectRLEnv):
                 self._robot.data.projected_gravity_b,
                 desired_pos_b,
                 self.unwrapped_yaw.unsqueeze(1),
+                self.last_actions,
             ],
             dim=-1,
         )
@@ -222,9 +227,9 @@ class QuadcopterEnv(DirectRLEnv):
             roll_w = wrap_to_pi(rpy[0])
             pitch_w = wrap_to_pi(rpy[1])
 
-            self.roll_history.append(roll_w)
-            self.pitch_history.append(pitch_w)
-            self.yaw_history.append(self.unwrapped_yaw)
+            self.roll_history.append(roll_w * 180.0 / np.pi)
+            self.pitch_history.append(pitch_w * 180.0 / np.pi)
+            self.yaw_history.append(self.unwrapped_yaw * 180.0 / np.pi)
 
             self.n_steps += 1
             if self.n_steps >= self.max_len_deque:
@@ -253,13 +258,18 @@ class QuadcopterEnv(DirectRLEnv):
 
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
+        smoothness = torch.sum(torch.square(self._actions - self.last_actions), dim=1)
+        self.last_actions = self._actions.clone()
+
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
             "distance_to_goal": distance_to_goal_mapped * self.cfg.distance_to_goal_reward_scale * self.step_dt,
             "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
+            "smooth": smoothness * self.cfg.smooth_reward_scale * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+
         # Logging
         for key, value in rewards.items():
             self._episode_sums[key] += value
