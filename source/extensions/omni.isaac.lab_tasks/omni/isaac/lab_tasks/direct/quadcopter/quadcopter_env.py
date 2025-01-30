@@ -128,8 +128,12 @@ class QuadcopterEnv(DirectRLEnv):
             self.is_train = True
         else:
             self.is_train = False
+            self.change_point = False
+            if self.change_point:
+                cfg.episode_length_s = 100.0
+            else:
+                cfg.episode_length_s = 5.0
             self.proximity_threshold = 0.2
-            cfg.episode_length_s = 100.0
             self.max_len_deque = 1000
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -274,7 +278,7 @@ class QuadcopterEnv(DirectRLEnv):
         for key, value in rewards.items():
             self._episode_sums[key] += value
 
-        if not self.is_train:
+        if not self.is_train and self.change_point:
             # Check if drone is within the proximity threshold
             close_to_goal = distance_to_goal < self.proximity_threshold
             if torch.any(close_to_goal and lin_vel < 0.2):
