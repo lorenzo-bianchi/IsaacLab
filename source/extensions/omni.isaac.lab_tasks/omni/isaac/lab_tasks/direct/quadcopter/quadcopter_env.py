@@ -101,7 +101,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     lin_vel_reward_scale = -0.05
     ang_vel_reward_scale = -0.01
     distance_to_goal_reward_scale = 15.0
-    yaw_reward_scale = 0.1
+    yaw_reward_scale = 4.0
 
 
 class QuadcopterEnv(DirectRLEnv):
@@ -117,6 +117,10 @@ class QuadcopterEnv(DirectRLEnv):
         # Goal position
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
 
+        self.last_yaw = 0.0
+        self.n_laps = 0
+        
+        
         # Get mode
         if self.num_envs > 1:
             self.is_train = True
@@ -128,9 +132,7 @@ class QuadcopterEnv(DirectRLEnv):
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
             self.yaw_history = deque(maxlen=self.max_len_deque)
-            self.n_laps = 0
             self.n_steps = 0
-            self.last_yaw = 0.0
             self.rpy_fig, self.rpy_axes = plt.subplots(3, 1, figsize=(10, 8))
             self.roll_line, = self.rpy_axes[0].plot([], [], 'r', label="Roll")
             self.pitch_line, = self.rpy_axes[1].plot([], [], 'g', label="Pitch")
@@ -197,13 +199,20 @@ class QuadcopterEnv(DirectRLEnv):
         rpy = euler_xyz_from_quat(quat_w)
         yaw_w = wrap_to_pi(rpy[2])
 
+        delta_yaw = yaw_w - self.last_yaw
+        self.n_laps += torch.where(delta_yaw < -np.pi, 1, 0)
+        self.n_laps -= torch.where(delta_yaw > np.pi, 1, 0)
+
+        self.unwrapped_yaw = yaw_w + 2 * np.pi * self.n_laps
+        self.last_yaw = yaw_w
+
         obs = torch.cat(
             [
                 self._robot.data.root_com_lin_vel_b,
                 self._robot.data.root_com_ang_vel_b,
                 self._robot.data.projected_gravity_b,
                 desired_pos_b,
-                yaw_w.unsqueeze(1),
+                self.unwrapped_yaw.unsqueeze(1),
             ],
             dim=-1,
         )
@@ -214,19 +223,9 @@ class QuadcopterEnv(DirectRLEnv):
             roll_w = wrap_to_pi(rpy[0])
             pitch_w = wrap_to_pi(rpy[1])
 
-            delta_yaw = yaw_w - self.last_yaw
-            if delta_yaw > np.pi:
-                self.n_laps -= 1
-            elif delta_yaw < -np.pi:
-                self.n_laps += 1
-
-            unwrapped_yaw = yaw_w + 2 * np.pi * self.n_laps
-
             self.roll_history.append(roll_w)
             self.pitch_history.append(pitch_w)
-            self.yaw_history.append(unwrapped_yaw)
-
-            self.last_yaw = yaw_w
+            self.yaw_history.append(self.unwrapped_yaw)
 
             self.n_steps += 1
             if self.n_steps >= self.max_len_deque:
@@ -246,16 +245,14 @@ class QuadcopterEnv(DirectRLEnv):
 
         return observations
 
+
     def _get_rewards(self) -> torch.Tensor:
         lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
         ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
         distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
 
-        # yaw_des = torch.atan2(self._desired_pos_w[:, 1], self._desired_pos_w[:, 0], dim =1)
-        quat_w = self._robot.data.root_quat_w
-        yaw_w = wrap_to_pi(euler_xyz_from_quat(quat_w)[2])
-        yaw_w_mapped = torch.exp(-10.0 * torch.abs(yaw_w))
+        yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
@@ -271,7 +268,7 @@ class QuadcopterEnv(DirectRLEnv):
         if not self.is_train:
             # Check if drone is within the proximity threshold
             close_to_goal = distance_to_goal < self.proximity_threshold
-            if torch.any(close_to_goal):
+            if torch.any(close_to_goal and lin_vel < 0.2):
                 # Update goal position for environments that are close to the goal
                 env_ids = torch.where(close_to_goal)[0]
                 self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
