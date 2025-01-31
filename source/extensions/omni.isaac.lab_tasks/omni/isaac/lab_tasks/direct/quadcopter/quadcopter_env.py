@@ -102,7 +102,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     ang_vel_reward_scale = -0.01
     distance_to_goal_reward_scale = 15.0
     yaw_reward_scale = 4.0
-    smooth_reward_scale = -1e-3
+    smooth_reward_scale = -1e-1
 
 
 class QuadcopterEnv(DirectRLEnv):
@@ -113,15 +113,15 @@ class QuadcopterEnv(DirectRLEnv):
 
         # Total thrust and moment applied to the base of the quadcopter
         self._actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
+        self.last_actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
         self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
+
         # Goal position
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
 
         self.last_yaw = 0.0
         self.n_laps = torch.zeros(self.num_envs, device=self.device)
-
-        self.last_actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
 
         # Get mode
         if self.num_envs > 1:
@@ -138,17 +138,22 @@ class QuadcopterEnv(DirectRLEnv):
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
             self.yaw_history = deque(maxlen=self.max_len_deque)
+            self.actions_history = deque(maxlen=self.max_len_deque)
             self.n_steps = 0
-            self.rpy_fig, self.rpy_axes = plt.subplots(3, 1, figsize=(10, 8))
+            self.rpy_fig, self.rpy_axes = plt.subplots(4, 1, figsize=(10, 8))
             self.roll_line, = self.rpy_axes[0].plot([], [], 'r', label="Roll")
             self.pitch_line, = self.rpy_axes[1].plot([], [], 'g', label="Pitch")
             self.yaw_line, = self.rpy_axes[2].plot([], [], 'b', label="Yaw")
+            self.actions_lines = [self.rpy_axes[3].plot([], [], label=f"Motor {i+1}")[0] for i in range(cfg.action_space)]
 
             # Configure subplots
-            for ax, title in zip(self.rpy_axes, ["Roll History", "Pitch History", "Yaw History"]):
+            for ax, title in zip(self.rpy_axes, ["Roll History", "Pitch History", "Yaw History", "Actions History"]):
                 ax.set_title(title)
                 ax.set_xlabel("Time Step")
-                ax.set_ylabel("Angle (°)")
+                if any(angle in title for angle in ["Roll", "Pitch", "Yaw"]):
+                    ax.set_ylabel("Angle (°)")
+                elif title == "Actions History":
+                    ax.set_ylabel("Action")
                 ax.legend(loc="upper left")
                 ax.grid(True)
 
@@ -166,13 +171,14 @@ class QuadcopterEnv(DirectRLEnv):
                 "smooth",
             ]
         }
+
         # Get specific body indices
         self._body_id = self._robot.find_bodies("body")[0]
         self._robot_mass = self._robot.root_physx_view.get_masses()[0].sum()
         self._gravity_magnitude = torch.tensor(self.sim.cfg.gravity, device=self.device).norm()
         self._robot_weight = (self._robot_mass * self._gravity_magnitude).item()
 
-        # add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
+        # Add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
         self.set_debug_vis(self.cfg.debug_vis)
 
     def _setup_scene(self):
@@ -198,9 +204,7 @@ class QuadcopterEnv(DirectRLEnv):
         self._robot.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
 
     def _get_observations(self) -> dict:
-        desired_pos_b, _ = subtract_frame_transforms(
-            self._robot.data.root_link_state_w[:, :3], self._robot.data.root_link_state_w[:, 3:7], self._desired_pos_w
-        )
+        desired_pos_b, _ = subtract_frame_transforms(self._robot.data.root_link_state_w[:, :3], self._robot.data.root_link_state_w[:, 3:7], self._desired_pos_w)
 
         quat_w = self._robot.data.root_quat_w
         rpy = euler_xyz_from_quat(quat_w)
@@ -234,15 +238,20 @@ class QuadcopterEnv(DirectRLEnv):
             self.roll_history.append(roll_w * 180.0 / np.pi)
             self.pitch_history.append(pitch_w * 180.0 / np.pi)
             self.yaw_history.append(self.unwrapped_yaw * 180.0 / np.pi)
+            self.actions_history.append(self._actions.squeeze(0).cpu().numpy())
 
             self.n_steps += 1
             if self.n_steps >= self.max_len_deque:
                 steps = np.arange(self.n_steps - self.max_len_deque, self.n_steps)
             else:
                 steps = np.arange(self.n_steps)
+
             self.roll_line.set_data(steps, self.roll_history)
             self.pitch_line.set_data(steps, self.pitch_history)
             self.yaw_line.set_data(steps, self.yaw_history)
+
+            for i in range(self.cfg.action_space):
+                self.actions_lines[i].set_data(steps, np.array(self.actions_history)[:, i])
 
             for ax in self.rpy_axes:
                 ax.relim()
@@ -252,7 +261,6 @@ class QuadcopterEnv(DirectRLEnv):
             plt.pause(0.001)
 
         return observations
-
 
     def _get_rewards(self) -> torch.Tensor:
         lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
