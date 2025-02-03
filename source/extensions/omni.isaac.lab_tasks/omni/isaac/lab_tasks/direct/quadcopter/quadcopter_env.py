@@ -103,7 +103,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     distance_to_goal_reward_scale = 15.0
     yaw_reward_scale = 4.0
     smooth_reward_scale = -1e-2
-    thrust_saturation_reward_scale = -1e-3
+    thrust_saturation_reward_scale = -1e-4
 
 
 class QuadcopterEnv(DirectRLEnv):
@@ -129,8 +129,8 @@ class QuadcopterEnv(DirectRLEnv):
             self.is_train = True
         else:
             self.is_train = False
-            self.change_point = False
-            if self.change_point:
+            self.change_setpoint = True
+            if self.change_setpoint:
                 cfg.episode_length_s = 100.0
             else:
                 cfg.episode_length_s = 5.0
@@ -292,7 +292,7 @@ class QuadcopterEnv(DirectRLEnv):
         for key, value in rewards.items():
             self._episode_sums[key] += value
 
-        if not self.is_train and self.change_point:
+        if not self.is_train and self.change_setpoint:
             # Check if drone is within the proximity threshold
             close_to_goal = distance_to_goal < self.proximity_threshold
             if torch.any(close_to_goal and lin_vel < 0.2):
