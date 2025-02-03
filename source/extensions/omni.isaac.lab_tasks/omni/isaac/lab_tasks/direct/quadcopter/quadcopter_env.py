@@ -103,6 +103,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     distance_to_goal_reward_scale = 15.0
     yaw_reward_scale = 4.0
     smooth_reward_scale = -1e-2
+    thrust_saturation_reward_scale = -1e-2
 
 
 class QuadcopterEnv(DirectRLEnv):
@@ -169,6 +170,7 @@ class QuadcopterEnv(DirectRLEnv):
                 "distance_to_goal",
                 "yaw",
                 "smooth",
+                "thrust_saturation",
             ]
         }
 
@@ -199,6 +201,7 @@ class QuadcopterEnv(DirectRLEnv):
         self._actions = actions.clone().clamp(-1.0, 1.0)
         self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
         self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:]
+        self._moment[:, 0, 2] = 0.0
 
     def _apply_action(self):
         self._robot.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
@@ -273,12 +276,15 @@ class QuadcopterEnv(DirectRLEnv):
         smoothness = torch.sum(torch.square(self._actions - self.last_actions), dim=1)
         self.last_actions = self._actions.clone()
 
+        thrust_saturation = torch.sum(torch.square(self._actions.clamp(-1.0, 1.0) - self._actions), dim=1)
+
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
             "distance_to_goal": distance_to_goal_mapped * self.cfg.distance_to_goal_reward_scale * self.step_dt,
             "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
             "smooth": smoothness * self.cfg.smooth_reward_scale * self.step_dt,
+            "thrust_saturation": thrust_saturation * self.cfg.thrust_saturation_reward_scale * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
 
