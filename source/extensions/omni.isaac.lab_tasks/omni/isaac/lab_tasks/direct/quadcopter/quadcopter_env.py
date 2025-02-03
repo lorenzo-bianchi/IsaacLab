@@ -103,7 +103,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     distance_to_goal_reward_scale = 15.0
     yaw_reward_scale = 4.0
     smooth_reward_scale = -1e-2
-    thrust_saturation_reward_scale = -1e-1
+    thrust_saturation_reward_scale = 0.0
 
 
 class QuadcopterEnv(DirectRLEnv):
