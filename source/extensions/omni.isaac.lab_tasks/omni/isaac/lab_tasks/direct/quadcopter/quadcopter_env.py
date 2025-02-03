@@ -276,7 +276,7 @@ class QuadcopterEnv(DirectRLEnv):
         smoothness = torch.sum(torch.square(self._actions - self.last_actions), dim=1)
         self.last_actions = self._actions.clone()
 
-        thrust_saturation = torch.sum(torch.square(self._actions.clamp(-1.0, 1.0) - self._actions), dim=1)
+        thrust_saturation = torch.square(self._actions[:, 0])
 
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
