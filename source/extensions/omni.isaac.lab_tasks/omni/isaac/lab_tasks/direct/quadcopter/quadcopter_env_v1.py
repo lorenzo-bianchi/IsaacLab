@@ -53,7 +53,7 @@ class QuadcopterEnvWindow(BaseEnvWindow):
 @configclass
 class QuadcopterEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 10.0
+    episode_length_s = 20.0
     decimation = 2
     action_space = 4
     observation_space = 12+1+4
@@ -100,10 +100,10 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # reward scales
     lin_vel_reward_scale = 0.0 #-0.05
     ang_vel_reward_scale = 0.0 #-0.01
-    distance_to_goal_reward_scale = 15.0
-    yaw_reward_scale = 4.0
-    cmd_reward_scale = -1e-2
-    cmd_body_rates_reward_scale = -1e-2
+    distance_to_goal_reward_scale = 10.0
+    yaw_reward_scale = 1.0
+    cmd_reward_scale = -1e-3
+    cmd_body_rates_reward_scale = -1e-3
     thrust_saturation_reward_scale = 0.0
     death_cost = -10.0
 
