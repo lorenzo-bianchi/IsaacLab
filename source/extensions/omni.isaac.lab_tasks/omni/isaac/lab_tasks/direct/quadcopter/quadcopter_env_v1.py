@@ -135,8 +135,11 @@ class QuadcopterEnv(DirectRLEnv):
                 for i in range(10)
             ],
             device=self.device,
+            dtype=torch.float32,
         )
-        self.n_waypoint = torch.tensor(self.num_envs * [0], device=self.device)
+        self.n_waypoint = torch.zeros(self.num_envs, device=self.device, dtype=torch.int32)
+
+        self.proximity_threshold = 0.2
 
         # Get mode
         if self.num_envs > 1:
@@ -148,7 +151,6 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 100.0
             else:
                 cfg.episode_length_s = 5.0
-            self.proximity_threshold = 0.2
             self.max_len_deque = 1000
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -312,11 +314,11 @@ class QuadcopterEnv(DirectRLEnv):
         self.last_distance_to_goal = distance_to_goal.clone()
 
         # Check if drone is within the proximity threshold
-        close_to_goal = distance_to_goal < self.proximity_threshold
-        if torch.any(close_to_goal and lin_vel < 0.2):
+        close_to_goal = distance_to_goal < self.proximity_threshold     # boolean tensor
+        if torch.any(close_to_goal):
             # Update goal position for environments that are close to the goal
             env_ids = torch.where(close_to_goal)[0]
-            self._desired_pos_w[env_ids, :] = self.trajectory[self.n_waypoint]
+            self._desired_pos_w[env_ids, :] = self.trajectory[self.n_waypoint[env_ids]]
             self.n_waypoint = torch.where(close_to_goal, (self.n_waypoint + 1) % self.trajectory.shape[0], self.n_waypoint)
 
         # Logging
