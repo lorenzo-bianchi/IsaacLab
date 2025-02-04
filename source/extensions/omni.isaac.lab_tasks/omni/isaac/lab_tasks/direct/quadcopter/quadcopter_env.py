@@ -98,12 +98,14 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # reward scales
-    lin_vel_reward_scale = -0.05
-    ang_vel_reward_scale = -0.01
+    lin_vel_reward_scale = 0.0 #-0.05
+    ang_vel_reward_scale = 0.0 #-0.01
     distance_to_goal_reward_scale = 15.0
     yaw_reward_scale = 4.0
-    smooth_reward_scale = -1e-2
+    cmd_reward_scale = -1e-2
+    cmd_body_rates_reward_scale = -1e-2
     thrust_saturation_reward_scale = 0.0
+    death_cost = -10.0
 
 
 class QuadcopterEnv(DirectRLEnv):
@@ -115,6 +117,8 @@ class QuadcopterEnv(DirectRLEnv):
         # Total thrust and moment applied to the base of the quadcopter
         self._actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
         self.last_actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
+        self.last_distance_to_goal = torch.zeros(self.num_envs, device=self.device)
+
         self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
 
@@ -169,7 +173,7 @@ class QuadcopterEnv(DirectRLEnv):
                 "ang_vel",
                 "distance_to_goal",
                 "yaw",
-                "smooth",
+                "cmd",
                 "thrust_saturation",
             ]
         }
@@ -269,24 +273,33 @@ class QuadcopterEnv(DirectRLEnv):
         lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
         ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
-        distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
+        # distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
 
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
-        smoothness = torch.sum(torch.square(self._actions - self.last_actions), dim=1)
-        self.last_actions = self._actions.clone()
+        cmd_smoothness = torch.sum(torch.square(self._actions - self.last_actions), dim=1)
+        cmd_body_rates_smoothness = torch.sum(self._actions[:, 1:] - self.last_actions[:, 1:])
 
         thrust_saturation = torch.square(self._actions[:, 0])
 
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
-            "distance_to_goal": distance_to_goal_mapped * self.cfg.distance_to_goal_reward_scale * self.step_dt,
+
+            "distance_to_goal": (distance_to_goal - self.last_distance_to_goal) * self.cfg.distance_to_goal_reward_scale * self.step_dt,
+
             "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
-            "smooth": smoothness * self.cfg.smooth_reward_scale * self.step_dt,
+
+            "cmd": cmd_smoothness * self.cfg.cmd_reward_scale * self.step_dt + \
+                   cmd_body_rates_smoothness * self.cfg.cmd_body_rates_reward_scale * self.step_dt,
+
             "thrust_saturation": thrust_saturation * self.cfg.thrust_saturation_reward_scale * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+        reward = torch.where(self.reset_terminated, torch.ones_like(reward) * self.cfg.death_cost, reward)
+
+        self.last_actions = self._actions.clone()
+        self.last_distance_to_goal = distance_to_goal.clone()
 
         # Logging
         for key, value in rewards.items():
