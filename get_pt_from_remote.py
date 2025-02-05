@@ -3,6 +3,13 @@ import os
 import argparse
 
 def copy_all_files_recursive(remote_host, remote_folder, local_path):
+    if 'rl_games' in remote_folder:
+        rl_library = 'rl_games'
+    elif 'rsl_rl' in remote_folder:
+        rl_library = 'rsl_rl'
+    else:
+        rl_library = None
+
     try:
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -40,8 +47,13 @@ def copy_all_files_recursive(remote_host, remote_folder, local_path):
                     if sftp.stat(remote_item_path).st_mode & 0o170000 == 0o040000:  # Directory
                         copy_directory(remote_item_path, local_item_path)
                     else:  # Regular file
-                        sftp.get(remote_item_path, local_item_path)
-                        print(f"Copied file: {remote_item_path} to {local_item_path}")
+                        if rl_library == 'rl_games':
+                            if '_rew_' in remote_item_path:
+                                continue
+                            sftp.get(remote_item_path, local_item_path)
+                            print(f"Copied file: {remote_item_path} to {local_item_path}")
+                        else:
+                            raise NotImplementedError(f'{rl_library} not implemented yet')
                 except Exception as e:
                     print(f"Error copying {item}: {e}")
 
