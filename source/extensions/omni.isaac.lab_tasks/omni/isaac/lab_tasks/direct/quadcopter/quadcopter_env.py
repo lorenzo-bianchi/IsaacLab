@@ -100,7 +100,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # reward scales
     lin_vel_reward_scale = 0.0 #-0.05
     ang_vel_reward_scale = 0.0 #-0.01
-    distance_to_goal_reward_scale = 500.0
+    distance_to_goal_reward_scale = 5000.0
     yaw_reward_scale = 4.0
     cmd_reward_scale = -1e-2
     cmd_body_rates_reward_scale = -1e-2
@@ -127,7 +127,7 @@ class QuadcopterEnv(DirectRLEnv):
 
         self.last_yaw = 0.0
         self.n_laps = torch.zeros(self.num_envs, device=self.device)
-        self.prob_change = 0.01
+        self.prob_change = 0.05
         self.proximity_threshold = 0.2
 
         # Get mode
@@ -274,7 +274,7 @@ class QuadcopterEnv(DirectRLEnv):
         lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
         ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
-        # distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
+        distance_to_goal_mapped = (self.last_distance_to_goal - distance_to_goal) + (1 - torch.tanh(distance_to_goal / 0.8))
 
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
@@ -287,7 +287,7 @@ class QuadcopterEnv(DirectRLEnv):
             # "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             # "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
 
-            "distance_to_goal": (self.last_distance_to_goal - distance_to_goal) * self.cfg.distance_to_goal_reward_scale,
+            "distance_to_goal": distance_to_goal_mapped * self.cfg.distance_to_goal_reward_scale * self.step_dt,
 
             "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
 
@@ -302,9 +302,12 @@ class QuadcopterEnv(DirectRLEnv):
         self.last_actions = self._actions.clone()
         self.last_distance_to_goal = distance_to_goal.clone()
 
-        if self.is_train:
+        if True: #self.is_train:
             close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
             change_setpoint = (torch.rand(self.num_envs, device=self.device) < self.prob_change)
+
+            print(f"Close to goal: {torch.sum(close_to_goal).item()}")
+            print(f"Change setpoint: {torch.sum(change_setpoint).item()}")
 
             if torch.any(torch.logical_and(close_to_goal, change_setpoint)):
                 # Update goal position for environments that are close to the goal
