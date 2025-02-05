@@ -105,7 +105,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     cmd_reward_scale = -1e-2
     cmd_body_rates_reward_scale = -1e-2
     thrust_saturation_reward_scale = 0.0
-    death_cost = -10.0
+    death_cost = -100.0
 
 
 class QuadcopterEnv(DirectRLEnv):
@@ -332,7 +332,6 @@ class QuadcopterEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         default_root_state = self._robot.data.default_root_state[:, :2] + self._terrain.env_origins[:, :2]
         drone_pos = self._robot.data.root_link_pos_w[:, :2]
-        print(torch.sum(torch.square(drone_pos - default_root_state), dim=1))
 
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         cond_h_min = torch.logical_and(self._robot.data.root_link_pos_w[:, 2] < 0.1, \
