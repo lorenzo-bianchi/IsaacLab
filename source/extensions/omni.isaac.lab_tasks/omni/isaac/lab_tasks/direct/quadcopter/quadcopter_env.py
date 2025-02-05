@@ -103,6 +103,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     approaching_goal_reward_scale = 5000.0
     convergence_goal_reward_scale = 0.0
     yaw_reward_scale = 10.0
+    new_goal_reward_scale = 100.0
 
     cmd_reward_scale = -1.0
     cmd_body_rates_reward_scale = -1.0
@@ -179,6 +180,7 @@ class QuadcopterEnv(DirectRLEnv):
                 "yaw",
                 "cmd",
                 "thrust_saturation",
+                "new_goal",
             ]
         }
 
@@ -287,6 +289,10 @@ class QuadcopterEnv(DirectRLEnv):
 
         thrust_saturation = torch.square(self._actions[:, 0])
 
+        close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
+        change_setpoint = (torch.rand(self.num_envs, device=self.device) < self.prob_change)
+        new_point = torch.logical_and(close_to_goal, change_setpoint)
+
         rewards = {
             # "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             # "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
@@ -298,6 +304,8 @@ class QuadcopterEnv(DirectRLEnv):
 
             "cmd": cmd_smoothness * self.cfg.cmd_reward_scale * self.step_dt + \
                    cmd_body_rates_smoothness * self.cfg.cmd_body_rates_reward_scale * self.step_dt,
+            
+            "new_goal": new_point * self.cfg.new_goal_reward_scale,
 
             # "thrust_saturation": thrust_saturation * self.cfg.thrust_saturation_reward_scale * self.step_dt,
         }
@@ -308,16 +316,12 @@ class QuadcopterEnv(DirectRLEnv):
         self.last_distance_to_goal = distance_to_goal.clone()
 
         if True: #self.is_train:
-            close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
-            change_setpoint = (torch.rand(self.num_envs, device=self.device) < self.prob_change)
-
-            if torch.any(torch.logical_and(close_to_goal, change_setpoint)):
+            if torch.any(new_point):
                 # Update goal position for environments that are close to the goal
                 env_ids = torch.where(close_to_goal)[0]
                 self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
                 self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
                 self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
-                reward[env_ids] += 100.0
         elif self.change_setpoint:
             # Check if drone is within the proximity threshold
             close_to_goal = distance_to_goal < self.proximity_threshold
