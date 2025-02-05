@@ -127,6 +127,8 @@ class QuadcopterEnv(DirectRLEnv):
 
         self.last_yaw = 0.0
         self.n_laps = torch.zeros(self.num_envs, device=self.device)
+        self.prob_change = 0.01
+        self.proximity_threshold = 0.2
 
         # Get mode
         if self.num_envs > 1:
@@ -138,7 +140,6 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 100.0
             else:
                 cfg.episode_length_s = 5.0
-            self.proximity_threshold = 0.2
             self.max_len_deque = 1000
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -283,43 +284,57 @@ class QuadcopterEnv(DirectRLEnv):
         thrust_saturation = torch.square(self._actions[:, 0])
 
         rewards = {
-            "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
-            "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
+            # "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
+            # "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
 
-            "distance_to_goal": (self.last_distance_to_goal - distance_to_goal) * self.cfg.distance_to_goal_reward_scale * self.step_dt,
+            "distance_to_goal": -distance_to_goal * self.cfg.distance_to_goal_reward_scale * self.step_dt,
 
             "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
 
             "cmd": cmd_smoothness * self.cfg.cmd_reward_scale * self.step_dt + \
                    cmd_body_rates_smoothness * self.cfg.cmd_body_rates_reward_scale * self.step_dt,
 
-            "thrust_saturation": thrust_saturation * self.cfg.thrust_saturation_reward_scale * self.step_dt,
+            # "thrust_saturation": thrust_saturation * self.cfg.thrust_saturation_reward_scale * self.step_dt,
         }
+        print(rewards)
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         reward = torch.where(self.reset_terminated, torch.ones_like(reward) * self.cfg.death_cost, reward)
 
         self.last_actions = self._actions.clone()
         self.last_distance_to_goal = distance_to_goal.clone()
 
-        # Logging
-        for key, value in rewards.items():
-            self._episode_sums[key] += value
+        if self.is_train:
+            close_to_goal = distance_to_goal < self.proximity_threshold
+            change_setpoint = torch.rand(self.num_envs) < self.prob_change
 
-        if not self.is_train and self.change_setpoint:
+            if torch.any(torch.logical_and(close_to_goal, change_setpoint)):
+                # Update goal position for environments that are close to the goal
+                env_ids = torch.where(close_to_goal)[0]
+                self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
+                self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
+                self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
+        elif self.change_setpoint:
             # Check if drone is within the proximity threshold
             close_to_goal = distance_to_goal < self.proximity_threshold
-            if torch.any(close_to_goal and lin_vel < 0.2):
+            
+            if torch.any(close_to_goal):
                 # Update goal position for environments that are close to the goal
                 env_ids = torch.where(close_to_goal)[0]
                 self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
                 self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
                 self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
 
+        # Logging
+        for key, value in rewards.items():
+            self._episode_sums[key] += value
+
         return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        died = torch.logical_or(self._robot.data.root_link_pos_w[:, 2] < 0.1, self._robot.data.root_link_pos_w[:, 2] > 2.0)
+        cond_h_min = torch.logical_and(self._robot.data.root_link_pos_w[:, 2] < 0.1, \
+                                       torch.abs(torch.sum(self._robot.data.root_link_pos_w[:, 1:2] > 0.1)))
+        died = torch.logical_or(cond_h_min, self._robot.data.root_link_pos_w[:, 2] > 2.0)
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
