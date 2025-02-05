@@ -306,9 +306,6 @@ class QuadcopterEnv(DirectRLEnv):
             close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
             change_setpoint = (torch.rand(self.num_envs, device=self.device) < self.prob_change)
 
-            print(f"Close to goal: {torch.sum(close_to_goal).item()}")
-            print(f"Change setpoint: {torch.sum(change_setpoint).item()}")
-
             if torch.any(torch.logical_and(close_to_goal, change_setpoint)):
                 # Update goal position for environments that are close to the goal
                 env_ids = torch.where(close_to_goal)[0]
