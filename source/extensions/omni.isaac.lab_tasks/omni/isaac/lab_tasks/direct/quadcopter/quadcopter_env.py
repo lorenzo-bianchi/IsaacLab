@@ -330,9 +330,13 @@ class QuadcopterEnv(DirectRLEnv):
         return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
+        default_root_state = self._robot.data.default_root_state[:, :2] + self._terrain.env_origins[:, :2]
+        drone_pos = self._robot.data.root_link_pos_w[:, :2]
+        print(torch.sum(torch.square(drone_pos - default_root_state), dim=1))
+
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         cond_h_min = torch.logical_and(self._robot.data.root_link_pos_w[:, 2] < 0.1, \
-                                       torch.abs(torch.sum(self._robot.data.root_link_pos_w[:, 1:2] > 0.1)))
+                                       torch.sum(torch.square(drone_pos - default_root_state), dim=1) > 0.1)
         died = torch.logical_or(cond_h_min, self._robot.data.root_link_pos_w[:, 2] > 2.0)
         return died, time_out
 
