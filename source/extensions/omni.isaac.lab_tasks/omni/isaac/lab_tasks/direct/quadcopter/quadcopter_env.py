@@ -100,7 +100,8 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # reward scales
     lin_vel_reward_scale = 0.0 #-0.05
     ang_vel_reward_scale = 0.0 #-0.01
-    distance_to_goal_reward_scale = 500.0
+    approaching_goal_reward_scale = 500.0
+    convergence_goal_reward_scale = 100.0
     yaw_reward_scale = 4.0
     cmd_reward_scale = -1e-1
     cmd_body_rates_reward_scale = -1e-1
@@ -172,7 +173,8 @@ class QuadcopterEnv(DirectRLEnv):
             for key in [
                 "lin_vel",
                 "ang_vel",
-                "distance_to_goal",
+                "approaching_to_goal",
+                "convergence_to_goal",
                 "yaw",
                 "cmd",
                 "thrust_saturation",
@@ -273,8 +275,10 @@ class QuadcopterEnv(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
         lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
         ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
+
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
-        distance_to_goal_mapped = (self.last_distance_to_goal - distance_to_goal) + (1 - torch.tanh(distance_to_goal / 0.8))
+        approaching = (self.last_distance_to_goal - distance_to_goal) 
+        convergence = (1 - torch.tanh(distance_to_goal / 0.8))
 
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
@@ -287,7 +291,8 @@ class QuadcopterEnv(DirectRLEnv):
             # "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             # "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
 
-            "distance_to_goal": distance_to_goal_mapped * self.cfg.distance_to_goal_reward_scale * self.step_dt,
+            "approaching": approaching * self.cfg.approaching_goal_reward_scale * self.step_dt,
+            "convergence": convergence * self.cfg.convergence_goal_reward_scale * self.step_dt,
 
             "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
 
