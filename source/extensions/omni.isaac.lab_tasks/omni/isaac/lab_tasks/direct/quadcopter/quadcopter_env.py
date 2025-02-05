@@ -100,7 +100,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # reward scales
     lin_vel_reward_scale = 0.0 #-0.05
     ang_vel_reward_scale = 0.0 #-0.01
-    distance_to_goal_reward_scale = 15.0
+    distance_to_goal_reward_scale = 50.0
     yaw_reward_scale = 4.0
     cmd_reward_scale = -1e-2
     cmd_body_rates_reward_scale = -1e-2
@@ -287,7 +287,7 @@ class QuadcopterEnv(DirectRLEnv):
             # "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
             # "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
 
-            "distance_to_goal": -distance_to_goal * self.cfg.distance_to_goal_reward_scale * self.step_dt,
+            "distance_to_goal": (self.last_distance_to_goal - distance_to_goal) * self.cfg.distance_to_goal_reward_scale * self.step_dt,
 
             "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
 
