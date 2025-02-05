@@ -53,7 +53,7 @@ class QuadcopterEnvWindow(BaseEnvWindow):
 @configclass
 class QuadcopterEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 10.0
+    episode_length_s = 20.0
     decimation = 2
     action_space = 4
     observation_space = 12+1+4
@@ -101,7 +101,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     lin_vel_reward_scale = 0.0 #-0.05
     ang_vel_reward_scale = 0.0 #-0.01
     approaching_goal_reward_scale = 5000.0
-    convergence_goal_reward_scale = 100.0
+    convergence_goal_reward_scale = 0.0
     yaw_reward_scale = 10.0
 
     cmd_reward_scale = -1.0
@@ -130,7 +130,7 @@ class QuadcopterEnv(DirectRLEnv):
         self.last_yaw = 0.0
         self.n_laps = torch.zeros(self.num_envs, device=self.device)
         self.prob_change = 0.05
-        self.proximity_threshold = 0.2
+        self.proximity_threshold = 0.1
 
         # Get mode
         if self.num_envs > 1:
@@ -317,6 +317,7 @@ class QuadcopterEnv(DirectRLEnv):
                 self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
                 self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
                 self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
+                reward[env_ids] += 100.0
         elif self.change_setpoint:
             # Check if drone is within the proximity threshold
             close_to_goal = distance_to_goal < self.proximity_threshold
