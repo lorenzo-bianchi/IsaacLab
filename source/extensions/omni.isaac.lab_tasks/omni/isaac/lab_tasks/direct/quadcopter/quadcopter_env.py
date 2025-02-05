@@ -296,7 +296,6 @@ class QuadcopterEnv(DirectRLEnv):
 
             # "thrust_saturation": thrust_saturation * self.cfg.thrust_saturation_reward_scale * self.step_dt,
         }
-        print(rewards)
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         reward = torch.where(self.reset_terminated, torch.ones_like(reward) * self.cfg.death_cost, reward)
 
