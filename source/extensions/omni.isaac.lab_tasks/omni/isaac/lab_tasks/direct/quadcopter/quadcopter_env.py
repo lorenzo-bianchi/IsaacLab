@@ -100,10 +100,10 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # reward scales
     lin_vel_reward_scale = 0.0 #-0.05
     ang_vel_reward_scale = 0.0 #-0.01
-    distance_to_goal_reward_scale = 5000.0
+    distance_to_goal_reward_scale = 500.0
     yaw_reward_scale = 4.0
-    cmd_reward_scale = -1e-2
-    cmd_body_rates_reward_scale = -1e-2
+    cmd_reward_scale = -1e-1
+    cmd_body_rates_reward_scale = -1e-1
     thrust_saturation_reward_scale = 0.0
     death_cost = -100.0
 
