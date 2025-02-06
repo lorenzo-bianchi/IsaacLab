@@ -99,14 +99,14 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # reward scales
     lin_vel_reward_scale = 0.0 #-0.05
-    ang_vel_reward_scale = -0.1 #-0.01
-    approaching_goal_reward_scale = 1000.0
-    convergence_goal_reward_scale = 5000.0
-    yaw_reward_scale = 500.0
+    ang_vel_reward_scale = -0.01 #-0.01
+    approaching_goal_reward_scale = 0.0
+    convergence_goal_reward_scale = 10.0
+    yaw_reward_scale = 5.0
     new_goal_reward_scale = 0.0
 
-    cmd_smoothness_reward_scale = -100.0
-    cmd_body_rates_reward_scale = -10.0
+    cmd_smoothness_reward_scale = -10.0
+    cmd_body_rates_reward_scale = -1.0
     death_cost = -10.0
 
 
@@ -278,8 +278,8 @@ class QuadcopterEnv(DirectRLEnv):
 
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
         approaching = (self.last_distance_to_goal - distance_to_goal)
-        # convergence = (1 - torch.tanh(distance_to_goal / 0.8))
-        convergence = 0.5 * (1 - torch.tanh(distance_to_goal / 0.01 - 3))
+        convergence = (1 - torch.tanh(distance_to_goal / 0.8))
+        # convergence = 0.5 * (1 - torch.tanh(distance_to_goal / 0.01 - 3))
 
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
