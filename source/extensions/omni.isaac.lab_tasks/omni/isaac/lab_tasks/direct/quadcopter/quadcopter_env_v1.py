@@ -98,15 +98,15 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # reward scales
-    lin_vel_reward_scale = -0.1
-    ang_vel_reward_scale = -0.01
+    lin_vel_reward_scale = -0.01
+    ang_vel_reward_scale = -0.001
     approaching_goal_reward_scale = 0.0
     convergence_goal_reward_scale = 10.0
     yaw_reward_scale = 5.0
     new_goal_reward_scale = 0.0
 
-    cmd_smoothness_reward_scale = -10.0
-    cmd_body_rates_reward_scale = -1.0
+    cmd_smoothness_reward_scale = -1
+    cmd_body_rates_reward_scale = -0.1
     death_cost = -10.0
 
 
@@ -190,8 +190,6 @@ class QuadcopterEnv(DirectRLEnv):
 
         # Add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
         self.set_debug_vis(self.cfg.debug_vis)
-
-        print(self.cfg)
 
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
