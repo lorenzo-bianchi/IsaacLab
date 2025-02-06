@@ -99,12 +99,14 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # reward scales
     lin_vel_reward_scale = 0.0 #-0.05
-    ang_vel_reward_scale = 0.0 #-0.01
-    distance_to_goal_reward_scale = 10.0
-    yaw_reward_scale = 1.0
-    cmd_reward_scale = -1e-4
-    cmd_body_rates_reward_scale = -1e-4
-    thrust_saturation_reward_scale = 0.0
+    ang_vel_reward_scale = -0.1 #-0.01
+    approaching_goal_reward_scale = 1000.0
+    convergence_goal_reward_scale = 5000.0
+    yaw_reward_scale = 500.0
+    new_goal_reward_scale = 0.0
+
+    cmd_smoothness_reward_scale = -100.0
+    cmd_body_rates_reward_scale = -10.0
     death_cost = -10.0
 
 
@@ -127,22 +129,11 @@ class QuadcopterEnv(DirectRLEnv):
 
         self.last_yaw = 0.0
         self.n_laps = torch.zeros(self.num_envs, device=self.device)
-
-        # create trajectory made up of 10 waypoints on a circle of radius 3 meters
-        self.trajectory = torch.tensor(
-            [
-                [3.0 * np.cos(2 * np.pi * i / 10), 3.0 * np.sin(2 * np.pi * i / 10), 1.0]
-                for i in range(10)
-            ],
-            device=self.device,
-            dtype=torch.float32,
-        )
-        self.n_waypoint = torch.zeros(self.num_envs, device=self.device, dtype=torch.int32)
-
-        self.proximity_threshold = 0.2
+        self.prob_change = 0.05
+        self.proximity_threshold = 0.1
 
         # Get mode
-        if self.num_envs > 1:
+        if self.num_envs > 10:
             self.is_train = True
         else:
             self.is_train = False
@@ -183,10 +174,11 @@ class QuadcopterEnv(DirectRLEnv):
             for key in [
                 "lin_vel",
                 "ang_vel",
-                "distance_to_goal",
+                "approaching_to_goal",
+                "convergence_to_goal",
                 "yaw",
                 "cmd",
-                "thrust_saturation",
+                "new_goal",
             ]
         }
 
@@ -283,28 +275,34 @@ class QuadcopterEnv(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
         lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
         ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
+
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
-        # distance_to_goal_mapped = 1 - torch.tanh(distance_to_goal / 0.8)
+        approaching = (self.last_distance_to_goal - distance_to_goal)
+        # convergence = (1 - torch.tanh(distance_to_goal / 0.8))
+        convergence = 0.5 * (1 - torch.tanh(distance_to_goal / 0.01 - 3))
 
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
         cmd_smoothness = torch.sum(torch.square(self._actions - self.last_actions), dim=1)
-        cmd_body_rates_smoothness = torch.sum(self._actions[:, 1:] - self.last_actions[:, 1:])
+        cmd_body_rates_smoothness = torch.sum(torch.square(self._actions[:, 1:]), dim=1)
 
-        thrust_saturation = torch.square(self._actions[:, 0])
+        close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
+        change_setpoint = (torch.rand(self.num_envs, device=self.device) < self.prob_change)
+        new_point = torch.logical_and(close_to_goal, change_setpoint)
 
         rewards = {
-            "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
-            "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
+            # "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
+            # "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
 
-            "distance_to_goal": (self.last_distance_to_goal - distance_to_goal) * self.cfg.distance_to_goal_reward_scale * self.step_dt,
+            "approaching_to_goal": approaching * self.cfg.approaching_goal_reward_scale * self.step_dt,
+            "convergence_to_goal": convergence * self.cfg.convergence_goal_reward_scale * self.step_dt,
 
             "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
 
-            "cmd": cmd_smoothness * self.cfg.cmd_reward_scale * self.step_dt + \
+            "cmd": cmd_smoothness * self.cfg.cmd_smoothness_reward_scale * self.step_dt + \
                    cmd_body_rates_smoothness * self.cfg.cmd_body_rates_reward_scale * self.step_dt,
-
-            "thrust_saturation": thrust_saturation * self.cfg.thrust_saturation_reward_scale * self.step_dt,
+            
+            "new_goal": new_point * self.cfg.new_goal_reward_scale,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         reward = torch.where(self.reset_terminated, torch.ones_like(reward) * self.cfg.death_cost, reward)
@@ -312,13 +310,23 @@ class QuadcopterEnv(DirectRLEnv):
         self.last_actions = self._actions.clone()
         self.last_distance_to_goal = distance_to_goal.clone()
 
-        # Check if drone is within the proximity threshold
-        close_to_goal = distance_to_goal < self.proximity_threshold     # boolean tensor
-        if torch.any(close_to_goal):
-            # Update goal position for environments that are close to the goal
-            env_ids = torch.where(close_to_goal)[0]
-            self._desired_pos_w[env_ids, :] = self.trajectory[self.n_waypoint[env_ids]]
-            self.n_waypoint = torch.where(close_to_goal, (self.n_waypoint + 1) % self.trajectory.shape[0], self.n_waypoint)
+        if True: #self.is_train:
+            if torch.any(new_point):
+                # Update goal position for environments that are close to the goal
+                env_ids = torch.where(close_to_goal)[0]
+                self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
+                self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
+                self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
+        elif self.change_setpoint:
+            # Check if drone is within the proximity threshold
+            close_to_goal = distance_to_goal < self.proximity_threshold
+            
+            if torch.any(close_to_goal):
+                # Update goal position for environments that are close to the goal
+                env_ids = torch.where(close_to_goal)[0]
+                self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
+                self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
+                self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
 
         # Logging
         for key, value in rewards.items():
@@ -327,7 +335,12 @@ class QuadcopterEnv(DirectRLEnv):
         return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
+        default_root_state = self._robot.data.default_root_state[:, :2] + self._terrain.env_origins[:, :2]
+        drone_pos = self._robot.data.root_link_pos_w[:, :2]
+
         time_out = self.episode_length_buf >= self.max_episode_length - 1
+        #cond_h_min = torch.logical_and(self._robot.data.root_link_pos_w[:, 2] < 0.1, \
+        #                               torch.sum(torch.square(drone_pos - default_root_state), dim=1) > 0.1)
         died = torch.logical_or(self._robot.data.root_link_pos_w[:, 2] < 0.1, self._robot.data.root_link_pos_w[:, 2] > 2.0)
         return died, time_out
 
