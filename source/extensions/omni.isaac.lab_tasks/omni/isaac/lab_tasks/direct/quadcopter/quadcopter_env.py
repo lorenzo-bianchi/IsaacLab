@@ -101,13 +101,12 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     lin_vel_reward_scale = 0.0 #-0.05
     ang_vel_reward_scale = 0.0 #-0.01
     approaching_goal_reward_scale = 1000.0
-    convergence_goal_reward_scale = 0.0
+    convergence_goal_reward_scale = 100.0
     yaw_reward_scale = 10.0
-    new_goal_reward_scale = 100.0
+    new_goal_reward_scale = 0.0
 
     cmd_reward_scale = -1.0
     cmd_body_rates_reward_scale = -1.0
-    thrust_saturation_reward_scale = 0.0
     death_cost = -100.0
 
 
@@ -179,7 +178,6 @@ class QuadcopterEnv(DirectRLEnv):
                 "convergence_to_goal",
                 "yaw",
                 "cmd",
-                "thrust_saturation",
                 "new_goal",
             ]
         }
@@ -279,15 +277,14 @@ class QuadcopterEnv(DirectRLEnv):
         ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
 
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
-        approaching = (self.last_distance_to_goal - distance_to_goal) 
-        convergence = (1 - torch.tanh(distance_to_goal / 0.8))
+        approaching = (self.last_distance_to_goal - distance_to_goal)
+        # convergence = (1 - torch.tanh(distance_to_goal / 0.8))
+        convergence = 0.5 * (1 - torch.tanh(distance_to_goal / 0.01 - 3))
 
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
         cmd_smoothness = torch.sum(torch.square(self._actions - self.last_actions), dim=1)
-        cmd_body_rates_smoothness = torch.sum(self._actions[:, 1:] - self.last_actions[:, 1:])
-
-        thrust_saturation = torch.square(self._actions[:, 0])
+        cmd_body_rates_smoothness = torch.sum(torch.square(self._actions[:, 1:]), dim=1)
 
         close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
         change_setpoint = (torch.rand(self.num_envs, device=self.device) < self.prob_change)
@@ -306,8 +303,6 @@ class QuadcopterEnv(DirectRLEnv):
                    cmd_body_rates_smoothness * self.cfg.cmd_body_rates_reward_scale * self.step_dt,
             
             "new_goal": new_point * self.cfg.new_goal_reward_scale,
-
-            # "thrust_saturation": thrust_saturation * self.cfg.thrust_saturation_reward_scale * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         reward = torch.where(self.reset_terminated, torch.ones_like(reward) * self.cfg.death_cost, reward)
