@@ -102,11 +102,11 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     ang_vel_reward_scale = 0.0 #-0.01
     approaching_goal_reward_scale = 1000.0
     convergence_goal_reward_scale = 100.0
-    yaw_reward_scale = 10.0
+    yaw_reward_scale = 100.0
     new_goal_reward_scale = 0.0
 
-    cmd_reward_scale = -1.0
-    cmd_body_rates_reward_scale = -1.0
+    cmd_reward_scale = -10.0
+    cmd_body_rates_reward_scale = -10.0
     death_cost = -100.0
 
 
@@ -339,9 +339,9 @@ class QuadcopterEnv(DirectRLEnv):
         drone_pos = self._robot.data.root_link_pos_w[:, :2]
 
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        cond_h_min = torch.logical_and(self._robot.data.root_link_pos_w[:, 2] < 0.1, \
-                                       torch.sum(torch.square(drone_pos - default_root_state), dim=1) > 0.1)
-        died = torch.logical_or(cond_h_min, self._robot.data.root_link_pos_w[:, 2] > 2.0)
+        #cond_h_min = torch.logical_and(self._robot.data.root_link_pos_w[:, 2] < 0.1, \
+        #                               torch.sum(torch.square(drone_pos - default_root_state), dim=1) > 0.1)
+        died = torch.logical_or(self._robot.data.root_link_pos_w[:, 2] < 0.1, self._robot.data.root_link_pos_w[:, 2] > 2.0)
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
