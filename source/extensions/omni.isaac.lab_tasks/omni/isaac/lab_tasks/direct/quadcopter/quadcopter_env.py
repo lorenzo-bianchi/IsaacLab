@@ -291,8 +291,8 @@ class QuadcopterEnv(DirectRLEnv):
         new_point = torch.logical_and(close_to_goal, change_setpoint)
 
         rewards = {
-            # "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
-            # "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
+            "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
+            "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
 
             "approaching_to_goal": approaching * self.cfg.approaching_goal_reward_scale * self.step_dt,
             "convergence_to_goal": convergence * self.cfg.convergence_goal_reward_scale * self.step_dt,
