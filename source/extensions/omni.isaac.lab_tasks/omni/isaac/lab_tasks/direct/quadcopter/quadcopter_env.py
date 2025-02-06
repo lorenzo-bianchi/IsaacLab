@@ -99,15 +99,15 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # reward scales
     lin_vel_reward_scale = 0.0 #-0.05
-    ang_vel_reward_scale = 0.0 #-0.01
+    ang_vel_reward_scale = -0.1 #-0.01
     approaching_goal_reward_scale = 1000.0
     convergence_goal_reward_scale = 100.0
-    yaw_reward_scale = 100.0
+    yaw_reward_scale = 500.0
     new_goal_reward_scale = 0.0
 
-    cmd_reward_scale = -10.0
+    cmd_smoothness_reward_scale = -100.0
     cmd_body_rates_reward_scale = -10.0
-    death_cost = -100.0
+    death_cost = -10.0
 
 
 class QuadcopterEnv(DirectRLEnv):
@@ -133,7 +133,7 @@ class QuadcopterEnv(DirectRLEnv):
         self.proximity_threshold = 0.1
 
         # Get mode
-        if self.num_envs > 1:
+        if self.num_envs > 10:
             self.is_train = True
         else:
             self.is_train = False
@@ -299,7 +299,7 @@ class QuadcopterEnv(DirectRLEnv):
 
             "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
 
-            "cmd": cmd_smoothness * self.cfg.cmd_reward_scale * self.step_dt + \
+            "cmd": cmd_smoothness * self.cfg.cmd_smoothness_reward_scale * self.step_dt + \
                    cmd_body_rates_smoothness * self.cfg.cmd_body_rates_reward_scale * self.step_dt,
             
             "new_goal": new_point * self.cfg.new_goal_reward_scale,
