@@ -116,22 +116,31 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg["params"]["config"]["train_dir"] = log_root_path
     agent_cfg["params"]["config"]["full_experiment_name"] = log_dir
 
+    # dump the configuration into log-directory
+    dump_yaml(os.path.join(log_root_path, log_dir, "params", "env.yaml"), env_cfg)
+    dump_yaml(os.path.join(log_root_path, log_dir, "params", "agent.yaml"), agent_cfg)
+    dump_pickle(os.path.join(log_root_path, log_dir, "params", "env.pkl"), env_cfg)
+    dump_pickle(os.path.join(log_root_path, log_dir, "params", "agent.pkl"), agent_cfg)
+
     # initialize wandb
     if args_cli.wandb:
         wandb.init(
             project="rl_games",
             entity=None,
             sync_tensorboard=True,
-            # config=config,
+            config=vars(args_cli),
             monitor_gym=True,
             save_code=True,
         )
-
-    # dump the configuration into log-directory
-    dump_yaml(os.path.join(log_root_path, log_dir, "params", "env.yaml"), env_cfg)
-    dump_yaml(os.path.join(log_root_path, log_dir, "params", "agent.yaml"), agent_cfg)
-    dump_pickle(os.path.join(log_root_path, log_dir, "params", "env.pkl"), env_cfg)
-    dump_pickle(os.path.join(log_root_path, log_dir, "params", "agent.pkl"), agent_cfg)
+        # TODO: remove quadcopter and make it generic
+        source_path = os.path.abspath("source")
+        quadcopter_path = os.path.join(source_path, "extensions", "omni.isaac.lab_tasks", "omni", "isaac", "lab_tasks", "direct", "quadcopter")
+        wandb.save(os.path.join(quadcopter_path, "quadcopter_env.py"))
+        wandb.save(os.path.join(quadcopter_path, "quadcopter_env_cfg.py"))
+        lab_assets_path = os.path.join(source_path, "extensions", "omni.isaac.lab_assets", "omni", "isaac", "lab_assets")
+        wandb.save(os.path.join(lab_assets_path, "quadcopter.py"))
+        wandb.save(os.path.join(log_root_path, log_dir, "params", "env.yaml"))
+        wandb.save(os.path.join(log_root_path, log_dir, "params", "agent.yaml"))
 
     # read configurations about the agent-training
     rl_device = agent_cfg["params"]["config"]["device"]
