@@ -278,8 +278,7 @@ class QuadcopterEnv(DirectRLEnv):
 
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
         approaching = (self.last_distance_to_goal - distance_to_goal)
-        # convergence = (1 - torch.tanh(distance_to_goal / 0.8))
-        convergence = 0.5 * (1 - torch.tanh(distance_to_goal / 0.01 - 6))
+        convergence = 1 - torch.tanh(distance_to_goal / 0.04)
 
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
