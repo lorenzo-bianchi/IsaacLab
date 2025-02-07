@@ -25,6 +25,8 @@ parser.add_argument("--checkpoint", type=str, default=None, help="Path to model 
 parser.add_argument("--sigma", type=str, default=None, help="The policy's initial standard deviation.")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument("--wandb", action="store_true", default=False, help="Track progresses with wandb.")
+parser.add_argument("--wandb-project", type=str, default="rl_games", help="Wandb project name.")
+parser.add_argument("--wandb-entity", type=str, default=None, help="Wandb entity name.")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -125,8 +127,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # initialize wandb
     if args_cli.wandb:
         wandb.init(
-            project="rl_games",
-            entity=None,
+            project=args_cli.wandb_project,
+            entity=args_cli.wandb_entity,
             sync_tensorboard=True,
             config=vars(args_cli),
             monitor_gym=True,
