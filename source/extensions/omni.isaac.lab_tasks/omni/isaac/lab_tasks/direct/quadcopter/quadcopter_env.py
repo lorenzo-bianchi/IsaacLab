@@ -18,7 +18,7 @@ from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
-from omni.isaac.lab.utils.math import subtract_frame_transforms, euler_xyz_from_quat, wrap_to_pi
+from omni.isaac.lab.utils.math import subtract_frame_transforms, euler_xyz_from_quat, wrap_to_pi, matrix_from_quat
 
 from matplotlib import pyplot as plt
 from collections import deque
@@ -56,7 +56,16 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     episode_length_s = 20.0
     decimation = 2
     action_space = 4
-    observation_space = 12+1+4+1
+    observation_space = (
+        3 +     # linear velocity
+        3 +     # angular velocity
+        3 +     # relative projected gravity
+        3 +     # relative desired position
+        1 +     # absolute yaw
+        # 9 +     # attitude matrix
+        4 +     # last actions
+        1       # absolute height
+    )
     state_space = 0
     debug_vis = True
 
@@ -98,15 +107,15 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # reward scales
-    lin_vel_reward_scale = -0.05
-    ang_vel_reward_scale = -0.2
-    approaching_goal_reward_scale = 500.0
-    convergence_goal_reward_scale = 1000.0
-    yaw_reward_scale = 100.0
-    new_goal_reward_scale = 100.0
+    lin_vel_reward_scale = 0.0 # -0.05
+    ang_vel_reward_scale = 0.0 # -0.2
+    approaching_goal_reward_scale = 1.0
+    convergence_goal_reward_scale = 1.0
+    yaw_reward_scale = 0.0 # 100.0
+    new_goal_reward_scale = 0.0 # 100.0
 
-    cmd_smoothness_reward_scale = -1.0
-    cmd_body_rates_reward_scale = -0.3
+    cmd_smoothness_reward_scale = 0.0 # -1.0
+    cmd_body_rates_reward_scale = 0.0 # -0.3
     death_cost = -1000.0
 
 
@@ -220,6 +229,7 @@ class QuadcopterEnv(DirectRLEnv):
         desired_pos_b, _ = subtract_frame_transforms(self._robot.data.root_link_state_w[:, :3], self._robot.data.root_link_state_w[:, 3:7], self._desired_pos_w)
 
         quat_w = self._robot.data.root_quat_w
+
         rpy = euler_xyz_from_quat(quat_w)
         yaw_w = wrap_to_pi(rpy[2])
 
@@ -230,15 +240,18 @@ class QuadcopterEnv(DirectRLEnv):
         self.unwrapped_yaw = yaw_w + 2 * np.pi * self.n_laps
         self.last_yaw = yaw_w
 
+        attitude_mat = matrix_from_quat(quat_w)
+
         obs = torch.cat(
             [
-                self._robot.data.root_com_lin_vel_b,
-                self._robot.data.root_com_ang_vel_b,
-                self._robot.data.projected_gravity_b,
+                self._robot.data.root_link_state_w[:, 3].unsqueeze(1),
                 desired_pos_b,
                 self.unwrapped_yaw.unsqueeze(1),
+                # attitude_mat.flatten(),
+                self._robot.data.root_com_lin_vel_b,
+                self._robot.data.root_com_ang_vel_b,
+                self._robot.data.projected_gravity_b,   # TODO: remove
                 self.last_actions,
-                self._robot.data.root_link_state_w[:, 3].unsqueeze(1),
             ],
             dim=-1,
         )
