@@ -187,7 +187,7 @@ class QuadcopterEnv(DirectRLEnv):
                 "ang_vel",
                 "approaching_to_goal",
                 "convergence_to_goal",
-                "attitude",
+                "yaw",
                 "cmd",
                 "new_goal",
             ]
@@ -234,7 +234,7 @@ class QuadcopterEnv(DirectRLEnv):
             [
                 self._robot.data.root_link_state_w[:, 3].unsqueeze(1),
                 desired_pos_b,
-                attitude_mat.flatten(),
+                attitude_mat.view(attitude_mat.shape[0], -1),
                 self._robot.data.root_com_lin_vel_b,
                 self._robot.data.root_com_ang_vel_b,
                 self._robot.data.projected_gravity_b,   # TODO: remove
@@ -244,19 +244,19 @@ class QuadcopterEnv(DirectRLEnv):
         )
         observations = {"policy": obs}
 
+        rpy = euler_xyz_from_quat(quat_w)
+        yaw_w = wrap_to_pi(rpy[2])
+
+        delta_yaw = yaw_w - self.last_yaw
+        self.n_laps += torch.where(delta_yaw < -np.pi, 1, 0)
+        self.n_laps -= torch.where(delta_yaw > np.pi, 1, 0)
+
+        self.unwrapped_yaw = yaw_w + 2 * np.pi * self.n_laps
+        self.last_yaw = yaw_w
+
         if not self.is_train:
             if self.draw_plots:
                 # RPY plots
-                rpy = euler_xyz_from_quat(quat_w)
-                yaw_w = wrap_to_pi(rpy[2])
-
-                delta_yaw = yaw_w - self.last_yaw
-                self.n_laps += torch.where(delta_yaw < -np.pi, 1, 0)
-                self.n_laps -= torch.where(delta_yaw > np.pi, 1, 0)
-
-                self.unwrapped_yaw = yaw_w + 2 * np.pi * self.n_laps
-                self.last_yaw = yaw_w
-
                 roll_w = wrap_to_pi(rpy[0])
                 pitch_w = wrap_to_pi(rpy[1])
 
