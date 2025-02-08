@@ -61,8 +61,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
         3 +     # angular velocity
         3 +     # relative projected gravity
         3 +     # relative desired position
-        1 +     # absolute yaw
-        # 9 +     # attitude matrix
+        9 +     # attitude matrix
         4 +     # last actions
         1       # absolute height
     )
@@ -107,16 +106,16 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     moment_scale = 0.01
 
     # reward scales
-    lin_vel_reward_scale = 0.0 # -0.05
-    ang_vel_reward_scale = 0.0 # -0.2
+    lin_vel_reward_scale = -0.05
+    ang_vel_reward_scale = -0.2
     approaching_goal_reward_scale = 1.0
     convergence_goal_reward_scale = 1.0
-    yaw_reward_scale = 0.0 # 100.0
-    new_goal_reward_scale = 0.0 # 100.0
+    yaw_reward_scale =  100.0
+    new_goal_reward_scale = 100.0
 
-    cmd_smoothness_reward_scale = 0.0 # -1.0
-    cmd_body_rates_reward_scale = 0.0 # -0.3
-    death_cost = -10.0  # - 1000.0
+    cmd_smoothness_reward_scale = -1.0
+    cmd_body_rates_reward_scale = -0.3
+    death_cost = -1000.0
 
 
 class QuadcopterEnv(DirectRLEnv):
@@ -188,7 +187,7 @@ class QuadcopterEnv(DirectRLEnv):
                 "ang_vel",
                 "approaching_to_goal",
                 "convergence_to_goal",
-                "yaw",
+                "attitude",
                 "cmd",
                 "new_goal",
             ]
@@ -229,25 +228,13 @@ class QuadcopterEnv(DirectRLEnv):
         desired_pos_b, _ = subtract_frame_transforms(self._robot.data.root_link_state_w[:, :3], self._robot.data.root_link_state_w[:, 3:7], self._desired_pos_w)
 
         quat_w = self._robot.data.root_quat_w
-
-        rpy = euler_xyz_from_quat(quat_w)
-        yaw_w = wrap_to_pi(rpy[2])
-
-        delta_yaw = yaw_w - self.last_yaw
-        self.n_laps += torch.where(delta_yaw < -np.pi, 1, 0)
-        self.n_laps -= torch.where(delta_yaw > np.pi, 1, 0)
-
-        self.unwrapped_yaw = yaw_w + 2 * np.pi * self.n_laps
-        self.last_yaw = yaw_w
-
         attitude_mat = matrix_from_quat(quat_w)
 
         obs = torch.cat(
             [
                 self._robot.data.root_link_state_w[:, 3].unsqueeze(1),
                 desired_pos_b,
-                self.unwrapped_yaw.unsqueeze(1),
-                # attitude_mat.flatten(),
+                attitude_mat.flatten(),
                 self._robot.data.root_com_lin_vel_b,
                 self._robot.data.root_com_ang_vel_b,
                 self._robot.data.projected_gravity_b,   # TODO: remove
@@ -260,6 +247,16 @@ class QuadcopterEnv(DirectRLEnv):
         if not self.is_train:
             if self.draw_plots:
                 # RPY plots
+                rpy = euler_xyz_from_quat(quat_w)
+                yaw_w = wrap_to_pi(rpy[2])
+
+                delta_yaw = yaw_w - self.last_yaw
+                self.n_laps += torch.where(delta_yaw < -np.pi, 1, 0)
+                self.n_laps -= torch.where(delta_yaw > np.pi, 1, 0)
+
+                self.unwrapped_yaw = yaw_w + 2 * np.pi * self.n_laps
+                self.last_yaw = yaw_w
+
                 roll_w = wrap_to_pi(rpy[0])
                 pitch_w = wrap_to_pi(rpy[1])
 
@@ -295,7 +292,10 @@ class QuadcopterEnv(DirectRLEnv):
         ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
 
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
-        approaching = (self.last_distance_to_goal - distance_to_goal)
+        approaching = self.last_distance_to_goal - distance_to_goal
+        # approaching = self.closest_distance_to_goal - distance_to_goal
+        # self.closest_distance_to_goal = torch.minimum(self.closest_distance_to_goal, distance_to_goal)
+        # approaching = torch.clip(approaching, 0, 100)
         convergence = 1 - torch.tanh(distance_to_goal / 0.04)
 
         yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
