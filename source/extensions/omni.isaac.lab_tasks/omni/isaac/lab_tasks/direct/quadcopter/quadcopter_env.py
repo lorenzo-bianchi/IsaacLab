@@ -108,8 +108,8 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # reward scales
     lin_vel_reward_scale = -0.05
     ang_vel_reward_scale = -0.2
-    approaching_goal_reward_scale = 1.0
-    convergence_goal_reward_scale = 1.0
+    approaching_goal_reward_scale = 500.0
+    convergence_goal_reward_scale = 1000.0
     yaw_reward_scale =  100.0
     new_goal_reward_scale = 100.0
 
@@ -318,18 +318,6 @@ class QuadcopterEnv(DirectRLEnv):
             self._desired_pos_w[ids_to_change, :2] += self._terrain.env_origins[ids_to_change, :2]
             self._desired_pos_w[ids_to_change, 2] = torch.zeros_like(self._desired_pos_w[ids_to_change, 2]).uniform_(0.5, 1.5)
             self.t_previous[ids_to_change] = 0.0
-
-        # print(f"close_to_goal: {close_to_goal}")
-        # print(f"time_cond: {time_cond}")
-        # print(f"give_reward: {give_reward}")
-        # print(f"reward: {give_reward * self.cfg.new_goal_reward_scale}")
-        # print(f"ids: {ids}")
-        # print(f"change_setpoint_mask: {change_setpoint_mask}")
-        # print(f"ids_to_change: {ids_to_change}")
-        # print()
-        # import time
-        # input()
-        # time.sleep(0.1)
 
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
