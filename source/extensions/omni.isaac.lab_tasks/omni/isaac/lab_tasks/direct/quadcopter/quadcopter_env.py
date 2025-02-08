@@ -56,7 +56,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     episode_length_s = 20.0
     decimation = 2
     action_space = 4
-    observation_space = 12+1+4#+1
+    observation_space = 12+1+4+1
     state_space = 0
     debug_vis = True
 
@@ -102,7 +102,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     ang_vel_reward_scale = -0.05
     approaching_goal_reward_scale = 500.0
     convergence_goal_reward_scale = 1000.0
-    yaw_reward_scale = 300.0
+    yaw_reward_scale = 800.0
     new_goal_reward_scale = 100.0
 
     cmd_smoothness_reward_scale = -1.0
@@ -238,7 +238,7 @@ class QuadcopterEnv(DirectRLEnv):
                 desired_pos_b,
                 self.unwrapped_yaw.unsqueeze(1),
                 self.last_actions,
-                # self._robot.data.root_link_state_w[:, 3]
+                self._robot.data.root_link_state_w[:, 3]
             ],
             dim=-1,
         )
