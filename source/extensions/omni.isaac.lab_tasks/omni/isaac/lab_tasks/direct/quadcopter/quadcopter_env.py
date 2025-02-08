@@ -244,35 +244,36 @@ class QuadcopterEnv(DirectRLEnv):
         )
         observations = {"policy": obs}
 
-        if self.draw_plots and not self.is_train:
-            # RPY plots
-            roll_w = wrap_to_pi(rpy[0])
-            pitch_w = wrap_to_pi(rpy[1])
+        if not self.is_train:
+            if self.draw_plots:
+                # RPY plots
+                roll_w = wrap_to_pi(rpy[0])
+                pitch_w = wrap_to_pi(rpy[1])
 
-            self.roll_history.append(roll_w * 180.0 / np.pi)
-            self.pitch_history.append(pitch_w * 180.0 / np.pi)
-            self.yaw_history.append(self.unwrapped_yaw * 180.0 / np.pi)
-            self.actions_history.append(self._actions.squeeze(0).cpu().numpy())
+                self.roll_history.append(roll_w * 180.0 / np.pi)
+                self.pitch_history.append(pitch_w * 180.0 / np.pi)
+                self.yaw_history.append(self.unwrapped_yaw * 180.0 / np.pi)
+                self.actions_history.append(self._actions.squeeze(0).cpu().numpy())
 
-            self.n_steps += 1
-            if self.n_steps >= self.max_len_deque:
-                steps = np.arange(self.n_steps - self.max_len_deque, self.n_steps)
-            else:
-                steps = np.arange(self.n_steps)
+                self.n_steps += 1
+                if self.n_steps >= self.max_len_deque:
+                    steps = np.arange(self.n_steps - self.max_len_deque, self.n_steps)
+                else:
+                    steps = np.arange(self.n_steps)
 
-            self.roll_line.set_data(steps, self.roll_history)
-            self.pitch_line.set_data(steps, self.pitch_history)
-            self.yaw_line.set_data(steps, self.yaw_history)
+                self.roll_line.set_data(steps, self.roll_history)
+                self.pitch_line.set_data(steps, self.pitch_history)
+                self.yaw_line.set_data(steps, self.yaw_history)
 
-            for i in range(self.cfg.action_space):
-                self.actions_lines[i].set_data(steps, np.array(self.actions_history)[:, i])
+                for i in range(self.cfg.action_space):
+                    self.actions_lines[i].set_data(steps, np.array(self.actions_history)[:, i])
 
-            for ax in self.rpy_axes:
-                ax.relim()
-                ax.autoscale_view()
+                for ax in self.rpy_axes:
+                    ax.relim()
+                    ax.autoscale_view()
 
-            plt.draw()
-            plt.pause(0.001)
+                plt.draw()
+                plt.pause(0.001)
 
         return observations
 
