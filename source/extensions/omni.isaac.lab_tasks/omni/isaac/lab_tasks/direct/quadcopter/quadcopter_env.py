@@ -53,10 +53,10 @@ class QuadcopterEnvWindow(BaseEnvWindow):
 @configclass
 class QuadcopterEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 40.0
+    episode_length_s = 20.0
     decimation = 2
     action_space = 4
-    observation_space = 12+1+4
+    observation_space = 12+1+4#+1
     state_space = 0
     debug_vis = True
 
@@ -103,7 +103,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     approaching_goal_reward_scale = 500.0
     convergence_goal_reward_scale = 1000.0
     yaw_reward_scale = 100.0
-    new_goal_reward_scale = 0.0
+    new_goal_reward_scale = 100.0
 
     cmd_smoothness_reward_scale = -1.0
     cmd_body_rates_reward_scale = -0.3
@@ -129,8 +129,10 @@ class QuadcopterEnv(DirectRLEnv):
 
         self.last_yaw = 0.0
         self.n_laps = torch.zeros(self.num_envs, device=self.device)
-        self.prob_change = 0.05
-        self.proximity_threshold = 0.1
+        self.prob_change = 0.5
+        self.proximity_threshold = 0.3
+        self.wait_time_s = 1.0
+        self.t_previous = torch.zeros(self.num_envs, device=self.device)
 
         # Get mode
         if self.num_envs > 10:
@@ -139,9 +141,10 @@ class QuadcopterEnv(DirectRLEnv):
             self.is_train = False
             self.change_setpoint = True
             if self.change_setpoint:
-                cfg.episode_length_s = 10.0
+                cfg.episode_length_s = 20.0
             else:
-                cfg.episode_length_s = 10.0
+                cfg.episode_length_s = 20.0
+            self.draw_plots = True
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -235,12 +238,13 @@ class QuadcopterEnv(DirectRLEnv):
                 desired_pos_b,
                 self.unwrapped_yaw.unsqueeze(1),
                 self.last_actions,
+                # self._robot.data.root_link_state_w[:, 3]
             ],
             dim=-1,
         )
         observations = {"policy": obs}
 
-        if not self.is_train:
+        if self.draw_plots and not self.is_train:
             # RPY plots
             roll_w = wrap_to_pi(rpy[0])
             pitch_w = wrap_to_pi(rpy[1])
@@ -286,8 +290,32 @@ class QuadcopterEnv(DirectRLEnv):
         cmd_body_rates_smoothness = torch.sum(torch.square(self._actions[:, 1:]), dim=1)
 
         close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
-        change_setpoint = (torch.rand(self.num_envs, device=self.device) < self.prob_change)
-        new_point = torch.logical_and(close_to_goal, change_setpoint)
+        episode_time = self.episode_length_buf * self.cfg.sim.dt * self.cfg.decimation
+        time_cond = (episode_time - self.t_previous) >= self.wait_time_s
+        give_reward = torch.logical_and(close_to_goal, time_cond)
+        ids = torch.where(give_reward)[0]
+
+        self.t_previous[ids] = episode_time[ids]
+
+        change_setpoint_mask = (torch.rand(len(ids), device=self.device) < self.prob_change)
+        ids_to_change = ids[change_setpoint_mask]
+        if len(ids_to_change) > 0:
+            self._desired_pos_w[ids_to_change, :2] = torch.zeros_like(self._desired_pos_w[ids_to_change, :2]).uniform_(-2.0, 2.0)
+            self._desired_pos_w[ids_to_change, :2] += self._terrain.env_origins[ids_to_change, :2]
+            self._desired_pos_w[ids_to_change, 2] = torch.zeros_like(self._desired_pos_w[ids_to_change, 2]).uniform_(0.5, 1.5)
+            self.t_previous[ids_to_change] = 0.0
+
+        # print(f"close_to_goal: {close_to_goal}")
+        # print(f"time_cond: {time_cond}")
+        # print(f"give_reward: {give_reward}")
+        # print(f"reward: {give_reward * self.cfg.new_goal_reward_scale}")
+        # print(f"ids: {ids}")
+        # print(f"change_setpoint_mask: {change_setpoint_mask}")
+        # print(f"ids_to_change: {ids_to_change}")
+        # print()
+        # import time
+        # input()
+        # time.sleep(0.1)
 
         rewards = {
             "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
@@ -300,32 +328,14 @@ class QuadcopterEnv(DirectRLEnv):
 
             "cmd": cmd_smoothness * self.cfg.cmd_smoothness_reward_scale * self.step_dt + \
                    cmd_body_rates_smoothness * self.cfg.cmd_body_rates_reward_scale * self.step_dt,
-            
-            "new_goal": new_point * self.cfg.new_goal_reward_scale,
+
+            "new_goal": give_reward * self.cfg.new_goal_reward_scale,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         reward = torch.where(self.reset_terminated, torch.ones_like(reward) * self.cfg.death_cost, reward)
 
         self.last_actions = self._actions.clone()
         self.last_distance_to_goal = distance_to_goal.clone()
-
-        if True: #self.is_train:
-            if torch.any(new_point):
-                # Update goal position for environments that are close to the goal
-                env_ids = torch.where(close_to_goal)[0]
-                self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
-                self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
-                self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
-        elif self.change_setpoint:
-            # Check if drone is within the proximity threshold
-            close_to_goal = distance_to_goal < self.proximity_threshold
-            
-            if torch.any(close_to_goal):
-                # Update goal position for environments that are close to the goal
-                env_ids = torch.where(close_to_goal)[0]
-                self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
-                self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
-                self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
 
         # Logging
         for key, value in rewards.items():
@@ -385,6 +395,7 @@ class QuadcopterEnv(DirectRLEnv):
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
         self.n_laps[env_ids] = 0
+        self.t_previous[env_ids] = 0.0
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # create markers if necessary for the first time
