@@ -238,7 +238,7 @@ class QuadcopterEnv(DirectRLEnv):
                 desired_pos_b,
                 self.unwrapped_yaw.unsqueeze(1),
                 self.last_actions,
-                self._robot.data.root_link_state_w[:, 3]
+                self._robot.data.root_link_state_w[:, 3].unsqueeze(1),
             ],
             dim=-1,
         )
