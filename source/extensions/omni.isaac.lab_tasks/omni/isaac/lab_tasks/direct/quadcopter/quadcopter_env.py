@@ -114,7 +114,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     new_goal_reward_scale = 100.0
 
     cmd_smoothness_reward_scale = -1.5
-    cmd_body_rates_reward_scale = -0.6
+    cmd_body_rates_reward_scale = -0.3
     death_cost = -1000.0
 
 
