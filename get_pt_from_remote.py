@@ -38,7 +38,14 @@ def copy_all_files_recursive(remote_host, remote_folder, local_path):
             os.makedirs(local_dir, exist_ok=True)
             print(f"Copying contents of {remote_dir} to {local_dir}")
 
-            for item in sftp.listdir(remote_dir):
+            all_files = sftp.listdir(remote_dir)
+            if rl_library == 'rsl_rl':
+                files = [filename for filename in all_files if 'model' in filename]
+                if not files:
+                    return
+                last_model = sorted(files, key=lambda x: int(x.split('_')[-1].split('.')[0]))[-1]
+
+            for item in all_files:
                 remote_item_path = os.path.join(remote_dir, item)
                 local_item_path = os.path.join(local_dir, item)
 
@@ -49,6 +56,11 @@ def copy_all_files_recursive(remote_host, remote_folder, local_path):
                     else:  # Regular file
                         if rl_library == 'rl_games':
                             if '_rew_' in remote_item_path:
+                                continue
+                            sftp.get(remote_item_path, local_item_path)
+                            print(f"Copied file: {remote_item_path} to {local_item_path}")
+                        elif rl_library == 'rsl_rl':
+                            if 'model_' in item and item != last_model:
                                 continue
                             sftp.get(remote_item_path, local_item_path)
                             print(f"Copied file: {remote_item_path} to {local_item_path}")
@@ -75,8 +87,8 @@ if __name__ == "__main__":
     # Set up argument parser for command line input
     parser = argparse.ArgumentParser(description="Recursively copy all files and directories from a remote server directory.")
     parser.add_argument("remote_host", type=str, help="The name of the host defined in .ssh/config")
-    parser.add_argument("remote_folder", type=str, help="The folder on the remote server to copy files from")
     parser.add_argument("local_path", type=str, help="The local path where the files and directories will be copied")
+    parser.add_argument("remote_folder", type=str, help="The folder on the remote server to copy files from")
     
     # Parse the arguments from the command line
     args = parser.parse_args()
