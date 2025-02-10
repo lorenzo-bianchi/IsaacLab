@@ -59,7 +59,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     observation_space = (
         3 +     # linear velocity
         3 +     # angular velocity
-        3 +     # relative projected gravity
+        # 3 +     # relative projected gravity
         3 +     # relative desired position
         9 +     # attitude matrix
         4 +     # last actions
@@ -108,8 +108,8 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # reward scales
     lin_vel_reward_scale = -0.2            # rsl_rl
     ang_vel_reward_scale = -0.05
-    approaching_goal_reward_scale = 1500.0
-    convergence_goal_reward_scale = 1000.0
+    approaching_goal_reward_scale = 1000.0
+    convergence_goal_reward_scale = 500.0
     yaw_reward_scale =  300.0
     new_goal_reward_scale = 100.0
 
@@ -138,7 +138,7 @@ class QuadcopterEnv(DirectRLEnv):
         self.last_yaw = 0.0
         self.n_laps = torch.zeros(self.num_envs, device=self.device)
         self.prob_change = 0.5
-        self.proximity_threshold = 0.3
+        self.proximity_threshold = 0.1
         self.wait_time_s = 1.0
         self.t_previous = torch.zeros(self.num_envs, device=self.device)
 
@@ -237,7 +237,7 @@ class QuadcopterEnv(DirectRLEnv):
                 attitude_mat.view(attitude_mat.shape[0], -1),
                 self._robot.data.root_com_lin_vel_b,
                 self._robot.data.root_com_ang_vel_b,
-                self._robot.data.projected_gravity_b,   # TODO: remove
+                # self._robot.data.projected_gravity_b,   # TODO: remove
                 self.last_actions,
             ],
             dim=-1,
