@@ -107,7 +107,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # reward scales
     lin_vel_reward_scale = -0.2            # rsl_rl
-    ang_vel_reward_scale = -0.08
+    ang_vel_reward_scale = -0.05
     approaching_goal_reward_scale = 900.0
     convergence_goal_reward_scale = 600.0
     yaw_reward_scale =  300.0
@@ -292,7 +292,7 @@ class QuadcopterEnv(DirectRLEnv):
         ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
 
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
-        approaching = self.last_distance_to_goal - distance_to_goal
+        approaching = torch.relu(self.last_distance_to_goal - distance_to_goal)
         # approaching = self.closest_distance_to_goal - distance_to_goal
         # self.closest_distance_to_goal = torch.minimum(self.closest_distance_to_goal, distance_to_goal)
         # approaching = torch.clip(approaching, 0, 100)
