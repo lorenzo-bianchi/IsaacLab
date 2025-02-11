@@ -7,8 +7,7 @@
 
 """Launch Isaac Sim Simulator first."""
 
-import argparse
-import sys
+import sys, argparse
 
 from omni.isaac.lab.app import AppLauncher
 
@@ -97,8 +96,32 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         log_dir += f"_{agent_cfg.run_name}"
     log_dir = os.path.join(log_root_path, log_dir)
 
+    ####################
+    # reward scales
+    lin_vel_reward_scale = -0.2            # rsl_rl
+    ang_vel_reward_scale = -0.05
+    approaching_goal_reward_scale = 900.0
+    convergence_goal_reward_scale = 600.0
+    yaw_reward_scale =  300.0
+    new_goal_reward_scale = 100.0
+
+    cmd_smoothness_reward_scale = -1.5
+    cmd_body_rates_reward_scale = -0.3
+    death_cost = -1000.0
+    rewards = {
+        'lin_vel_reward_scale': lin_vel_reward_scale,
+        'ang_vel_reward_scale': ang_vel_reward_scale,
+        'approaching_goal_reward_scale': approaching_goal_reward_scale,
+        'convergence_goal_reward_scale': convergence_goal_reward_scale,
+        'yaw_reward_scale': yaw_reward_scale,
+        'new_goal_reward_scale': new_goal_reward_scale,
+        'cmd_smoothness_reward_scale': cmd_smoothness_reward_scale,
+        'cmd_body_rates_reward_scale': cmd_body_rates_reward_scale,
+        'death_cost': death_cost
+    }
+
     # create isaac environment
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None, rewards=rewards)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):

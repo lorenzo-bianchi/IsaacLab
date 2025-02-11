@@ -59,7 +59,6 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     observation_space = (
         3 +     # linear velocity
         3 +     # angular velocity
-        # 3 +     # relative projected gravity
         3 +     # relative desired position
         9 +     # attitude matrix
         4 +     # last actions
@@ -105,24 +104,22 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     thrust_to_weight = 1.9
     moment_scale = 0.01
 
-    # reward scales
-    lin_vel_reward_scale = -0.2            # rsl_rl
-    ang_vel_reward_scale = -0.05
-    approaching_goal_reward_scale = 900.0
-    convergence_goal_reward_scale = 600.0
-    yaw_reward_scale =  300.0
-    new_goal_reward_scale = 100.0
-
-    cmd_smoothness_reward_scale = -1.5
-    cmd_body_rates_reward_scale = -0.3
-    death_cost = -1000.0
-
-
 class QuadcopterEnv(DirectRLEnv):
     cfg: QuadcopterEnvCfg
 
     def __init__(self, cfg: QuadcopterEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
+
+        # Get mode
+        if self.num_envs > 10:
+            self.is_train = True
+        else:
+            self.is_train = False
+
+        if "rewards" in kwargs:
+            self.rew = kwargs.get("rewards", None)
+        elif self.is_train:
+            raise ValueError("rewards not provided")
 
         # Total thrust and moment applied to the base of the quadcopter
         self._actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
@@ -142,11 +139,7 @@ class QuadcopterEnv(DirectRLEnv):
         self.wait_time_s = 1.0
         self.t_previous = torch.zeros(self.num_envs, device=self.device)
 
-        # Get mode
-        if self.num_envs > 10:
-            self.is_train = True
-        else:
-            self.is_train = False
+        if not self.is_train:
             self.change_setpoint = True
             if self.change_setpoint:
                 cfg.episode_length_s = 20.0
@@ -163,7 +156,7 @@ class QuadcopterEnv(DirectRLEnv):
             self.roll_line, = self.rpy_axes[0].plot([], [], 'r', label="Roll")
             self.pitch_line, = self.rpy_axes[1].plot([], [], 'g', label="Pitch")
             self.yaw_line, = self.rpy_axes[2].plot([], [], 'b', label="Yaw")
-            self.actions_lines = [self.rpy_axes[3].plot([], [], label=f"Motor {i+1}")[0] for i in range(cfg.action_space)]
+            self.actions_lines = [self.rpy_axes[3].plot([], [], label=f"{legend}")[0] for legend in ["Thrust", "Roll rate", "Pitch rate", "Yaw rate"]]
 
             # Configure subplots
             for ax, title in zip(self.rpy_axes, ["Roll History", "Pitch History", "Yaw History", "Actions History"]):
@@ -180,18 +173,12 @@ class QuadcopterEnv(DirectRLEnv):
             plt.ion()  # interactive mode
 
         # Logging
-        self._episode_sums = {
-            key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-            for key in [
-                "lin_vel",
-                "ang_vel",
-                "approaching_to_goal",
-                "convergence_to_goal",
-                "yaw",
-                "cmd",
-                "new_goal",
-            ]
-        }
+        # get keys from self.rew.keys() except for death_cost and remove the _reward_scale suffix
+        if self.is_train:
+            keys = [key.split("_reward_scale")[0] for key in self.rew.keys() if key != "death_cost"]
+            self._episode_sums = {
+                key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device) for key in keys
+            }
 
         # Get specific body indices
         self._body_id = self._robot.find_bodies("body")[0]
@@ -237,7 +224,6 @@ class QuadcopterEnv(DirectRLEnv):
                 attitude_mat.view(attitude_mat.shape[0], -1),
                 self._robot.data.root_com_lin_vel_b,
                 self._robot.data.root_com_ang_vel_b,
-                # self._robot.data.projected_gravity_b,   # TODO: remove
                 self.last_actions,
             ],
             dim=-1,
@@ -288,29 +274,55 @@ class QuadcopterEnv(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
-        lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
-        ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
-
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
-        approaching = torch.relu(self.last_distance_to_goal - distance_to_goal)
-        # approaching = self.closest_distance_to_goal - distance_to_goal
-        # self.closest_distance_to_goal = torch.minimum(self.closest_distance_to_goal, distance_to_goal)
-        # approaching = torch.clip(approaching, 0, 100)
-        convergence = 1 - torch.tanh(distance_to_goal / 0.04)
-
-        yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
-
-        cmd_smoothness = torch.sum(torch.square(self._actions - self.last_actions), dim=1)
-        cmd_body_rates_smoothness = torch.sum(torch.square(self._actions[:, 1:]), dim=1)
-
-        close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
         episode_time = self.episode_length_buf * self.cfg.sim.dt * self.cfg.decimation
+        close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
         time_cond = (episode_time - self.t_previous) >= self.wait_time_s
         give_reward = torch.logical_and(close_to_goal, time_cond)
         ids = torch.where(give_reward)[0]
 
-        self.t_previous[ids] = episode_time[ids]
+        if self.is_train:
+            lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
+            ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
 
+            approaching = torch.relu(self.last_distance_to_goal - distance_to_goal)
+            # approaching = self.closest_distance_to_goal - distance_to_goal
+            # self.closest_distance_to_goal = torch.minimum(self.closest_distance_to_goal, distance_to_goal)
+            # approaching = torch.clip(approaching, 0, 100)
+            convergence = 1 - torch.tanh(distance_to_goal / 0.04)
+
+            yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
+
+            cmd_smoothness = torch.sum(torch.square(self._actions - self.last_actions), dim=1)
+            cmd_body_rates_smoothness = torch.sum(torch.square(self._actions[:, 1:]), dim=1)
+
+            rewards = {
+                "lin_vel": lin_vel * self.rew['lin_vel_reward_scale'] * self.step_dt,
+                "ang_vel": ang_vel * self.rew['ang_vel_reward_scale'] * self.step_dt,
+
+                "approaching_goal": approaching * self.rew['approaching_goal_reward_scale'] * self.step_dt,
+                "convergence_goal": convergence * self.rew['convergence_goal_reward_scale'] * self.step_dt,
+
+                "yaw": yaw_w_mapped * self.rew['yaw_reward_scale'] * self.step_dt,
+
+                "cmd_smoothness": cmd_smoothness * self.rew['cmd_smoothness_reward_scale'] * self.step_dt,
+                "cmd_body_rates": cmd_body_rates_smoothness * self.rew['cmd_body_rates_reward_scale'] * self.step_dt,
+
+                "new_goal": give_reward * self.rew['new_goal_reward_scale'],
+            }
+            reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
+            reward = torch.where(self.reset_terminated, torch.ones_like(reward) * self.rew['death_cost'], reward)
+
+            self.last_actions = self._actions.clone()
+            self.last_distance_to_goal = distance_to_goal.clone()
+
+            # Logging
+            for key, value in rewards.items():
+                self._episode_sums[key] += value
+        else:
+            reward = torch.zeros(self.num_envs, device=self.device)
+
+        self.t_previous[ids] = episode_time[ids]
         change_setpoint_mask = (torch.rand(len(ids), device=self.device) < self.prob_change)
         ids_to_change = ids[change_setpoint_mask]
         if len(ids_to_change) > 0:
@@ -318,30 +330,6 @@ class QuadcopterEnv(DirectRLEnv):
             self._desired_pos_w[ids_to_change, :2] += self._terrain.env_origins[ids_to_change, :2]
             self._desired_pos_w[ids_to_change, 2] = torch.zeros_like(self._desired_pos_w[ids_to_change, 2]).uniform_(0.5, 1.5)
             self.t_previous[ids_to_change] = 0.0
-
-        rewards = {
-            "lin_vel": lin_vel * self.cfg.lin_vel_reward_scale * self.step_dt,
-            "ang_vel": ang_vel * self.cfg.ang_vel_reward_scale * self.step_dt,
-
-            "approaching_to_goal": approaching * self.cfg.approaching_goal_reward_scale * self.step_dt,
-            "convergence_to_goal": convergence * self.cfg.convergence_goal_reward_scale * self.step_dt,
-
-            "yaw": yaw_w_mapped * self.cfg.yaw_reward_scale * self.step_dt,
-
-            "cmd": cmd_smoothness * self.cfg.cmd_smoothness_reward_scale * self.step_dt + \
-                   cmd_body_rates_smoothness * self.cfg.cmd_body_rates_reward_scale * self.step_dt,
-
-            "new_goal": give_reward * self.cfg.new_goal_reward_scale,
-        }
-        reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
-        reward = torch.where(self.reset_terminated, torch.ones_like(reward) * self.cfg.death_cost, reward)
-
-        self.last_actions = self._actions.clone()
-        self.last_distance_to_goal = distance_to_goal.clone()
-
-        # Logging
-        for key, value in rewards.items():
-            self._episode_sums[key] += value
 
         return reward
 
@@ -359,22 +347,23 @@ class QuadcopterEnv(DirectRLEnv):
         if env_ids is None or len(env_ids) == self.num_envs:
             env_ids = self._robot._ALL_INDICES
 
-        # Logging
-        final_distance_to_goal = torch.linalg.norm(
-            self._desired_pos_w[env_ids] - self._robot.data.root_link_pos_w[env_ids], dim=1
-        ).mean()
-        extras = dict()
-        for key in self._episode_sums.keys():
-            episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
-            extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length_s
-            self._episode_sums[key][env_ids] = 0.0
-        self.extras["log"] = dict()
-        self.extras["log"].update(extras)
-        extras = dict()
-        extras["Episode_Termination/died"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
-        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
-        extras["Metrics/final_distance_to_goal"] = final_distance_to_goal.item()
-        self.extras["log"].update(extras)
+        if self.is_train:
+            # Logging
+            final_distance_to_goal = torch.linalg.norm(
+                self._desired_pos_w[env_ids] - self._robot.data.root_link_pos_w[env_ids], dim=1
+            ).mean()
+            extras = dict()
+            for key in self._episode_sums.keys():
+                episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
+                extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length_s
+                self._episode_sums[key][env_ids] = 0.0
+            self.extras["log"] = dict()
+            self.extras["log"].update(extras)
+            extras = dict()
+            extras["Episode_Termination/died"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
+            extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
+            extras["Metrics/final_distance_to_goal"] = final_distance_to_goal.item()
+            self.extras["log"].update(extras)
 
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
