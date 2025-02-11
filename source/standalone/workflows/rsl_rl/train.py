@@ -98,8 +98,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     ####################
     # reward scales
-    lin_vel_reward_scale = -0.2            # rsl_rl
-    ang_vel_reward_scale = -0.05
+    lin_vel_reward_scale = 0.0                  # rsl_rl
+    ang_vel_reward_scale = 0.0
     approaching_goal_reward_scale = 900.0
     convergence_goal_reward_scale = 0.0
     yaw_reward_scale =  300.0
@@ -119,6 +119,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         'cmd_body_rates_reward_scale': cmd_body_rates_reward_scale,
         'death_cost': death_cost
     }
+
+    env_cfg.rewards = rewards
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None, rewards=rewards)
