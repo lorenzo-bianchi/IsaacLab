@@ -58,9 +58,32 @@ import omni.isaac.lab_tasks  # noqa: F401
 from omni.isaac.lab_tasks.utils import get_checkpoint_path, load_cfg_from_registry, parse_env_cfg
 from omni.isaac.lab_tasks.utils.wrappers.rl_games import RlGamesGpuEnv, RlGamesVecEnvWrapper
 
+# import rclpy
+# from rclpy.node import Node
+# from geometry_msgs.msg import Pose
+
+# class RobotPublisher(Node):
+#     def __init__(self):
+#         super().__init__("robot_publisher")
+#         self.publisher = self.create_publisher(Pose, "robot_pose", 10)
+        
+#     def publish_robot_pose(self, pose):
+#         msg = Pose()
+#         msg.position.x = pose[0]
+#         msg.position.y = pose[1]
+#         msg.position.z = pose[2]
+#         msg.orientation.x = pose[3]
+#         msg.orientation.y = pose[4]
+#         msg.orientation.z = pose[5]
+#         msg.orientation.w = pose[6]
+#         self.publisher.publish(msg)
 
 def main():
     """Play with RL-Games agent."""
+    # # Create ROS 2 Node
+    # rclpy.init()
+    # node = RobotPublisher()
+
     # parse env configuration
     env_cfg = parse_env_cfg(
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
@@ -151,6 +174,9 @@ def main():
     #   attempt to have complete control over environment stepping. However, this removes other
     #   operations such as masking that is used for multi-agent learning by RL-Games.
     while simulation_app.is_running():
+        # robot_pose = [0, 0, 0, 0, 0, 0, 1]
+        # node.publish_robot_pose(robot_pose)
+
         # run everything in inference mode
         with torch.inference_mode():
             # convert obs to agent format
@@ -173,6 +199,7 @@ def main():
                 break
 
     # close the simulator
+    # rclpy.shutdown()
     env.close()
 
 

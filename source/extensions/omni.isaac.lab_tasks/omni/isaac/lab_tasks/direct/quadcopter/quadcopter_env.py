@@ -104,6 +104,9 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     thrust_to_weight = 1.9
     moment_scale = 0.01
 
+    # reward scales
+    rewards = {}
+
 class QuadcopterEnv(DirectRLEnv):
     cfg: QuadcopterEnvCfg
 
@@ -116,8 +119,8 @@ class QuadcopterEnv(DirectRLEnv):
         else:
             self.is_train = False
 
-        if "rewards" in kwargs:
-            self.rew = kwargs.get("rewards", None)
+        if len(cfg.rewards) > 0:
+            self.rew = cfg.rewards
         elif self.is_train:
             raise ValueError("rewards not provided")
 
