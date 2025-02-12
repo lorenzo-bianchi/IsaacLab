@@ -415,7 +415,6 @@ class QuadcopterEnv(DirectRLEnv):
 
         # Reset robots state
         default_root_state = self._robot.data.default_root_state[env_ids]   # [pos, quat, lin_vel, ang_vel] in local environment frame. Shape is (num_instances, 13)
-        print(default_root_state)
         if self.reset_mode == "alt_no_att":
             pass
         elif self.reset_mode == "alt_att":
