@@ -320,7 +320,6 @@ class QuadcopterEnv(DirectRLEnv):
             reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
             reward = torch.where(self.reset_terminated, torch.ones_like(reward) * self.rew['death_cost'], reward)
 
-            self.last_actions = self._actions.clone()
             self.last_distance_to_goal = distance_to_goal.clone()
 
             # Logging
@@ -328,6 +327,8 @@ class QuadcopterEnv(DirectRLEnv):
                 self._episode_sums[key] += value
         else:
             reward = torch.zeros(self.num_envs, device=self.device)
+
+        self.last_actions = self._actions.clone()
 
         self.t_previous[ids] = episode_time[ids]
         change_setpoint_mask = (torch.rand(len(ids), device=self.device) < self.prob_change)
