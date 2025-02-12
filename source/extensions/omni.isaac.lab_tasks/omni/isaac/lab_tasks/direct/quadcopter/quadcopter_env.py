@@ -124,7 +124,7 @@ class QuadcopterEnv(DirectRLEnv):
         elif self.is_train:
             raise ValueError("rewards not provided")
 
-        # Total thrust and moment applied to the base of the quadcopter
+        # Initialize tensors
         self._actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
         self.last_actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
         self.last_distance_to_goal = torch.zeros(self.num_envs, device=self.device)
@@ -132,14 +132,14 @@ class QuadcopterEnv(DirectRLEnv):
         self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
 
-        # Goal position
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
 
+        # Initialize variables
         self.beta = 0.9
         self.min_altitude = 0.1
         self.max_altitude = 2.0
         self.max_time_on_ground = 2.0
-        self.reset_mode = "alt_att" # "alt_no_att", "alt_att", "ground"
+        self.reset_mode = "alt_no_att" # "alt_no_att", "alt_att", "ground"
 
         self.last_yaw = 0.0
         self.n_laps = torch.zeros(self.num_envs, device=self.device)
@@ -424,12 +424,12 @@ class QuadcopterEnv(DirectRLEnv):
                 torch.FloatTensor(n_reset).uniform_(self.min_roll_pitch, self.max_roll_pitch),
                 torch.FloatTensor(n_reset).uniform_(self.min_roll_pitch, self.max_roll_pitch),
                 torch.FloatTensor(n_reset).uniform_(self.min_yaw, self.max_yaw)
-            )
+            ).to(self.device)
             lin_vel = torch.stack([
                 torch.FloatTensor(n_reset).uniform_(self.min_lin_vel_xy, self.max_lin_vel_xy),
                 torch.FloatTensor(n_reset).uniform_(self.min_lin_vel_xy, self.max_lin_vel_xy),
                 torch.FloatTensor(n_reset).uniform_(self.min_lin_vel_z, self.max_lin_vel_z)
-            ], dim=1)
+            ], dim=1).to(self.device)
             ang_vel = torch.FloatTensor(n_reset, 3).uniform_(self.min_ang_vel, self.max_ang_vel)
             default_root_state = torch.cat([pos, quat, lin_vel, ang_vel], dim=1)
         elif self.reset_mode == "ground":
