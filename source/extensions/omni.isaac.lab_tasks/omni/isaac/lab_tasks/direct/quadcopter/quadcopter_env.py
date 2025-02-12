@@ -395,7 +395,8 @@ class QuadcopterEnv(DirectRLEnv):
 
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
-        if len(env_ids) == self.num_envs and self.num_envs > 1:
+        n_reset = len(env_ids)
+        if n_reset == self.num_envs and self.num_envs > 1:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
         self.episode_length_buf_zero = self.episode_length_buf.clone()
@@ -421,16 +422,16 @@ class QuadcopterEnv(DirectRLEnv):
             pos = default_root_state[:, :3]
             # Randomize other values
             quat = quat_from_euler_xyz(
-                torch.FloatTensor(len(env_ids)).uniform_(self.min_roll_pitch, self.max_roll_pitch),
-                torch.FloatTensor(len(env_ids)).uniform_(self.min_roll_pitch, self.max_roll_pitch),
-                torch.FloatTensor(len(env_ids)).uniform_(self.min_yaw, self.max_yaw)
+                torch.FloatTensor(n_reset).uniform_(self.min_roll_pitch, self.max_roll_pitch),
+                torch.FloatTensor(n_reset).uniform_(self.min_roll_pitch, self.max_roll_pitch),
+                torch.FloatTensor(n_reset).uniform_(self.min_yaw, self.max_yaw)
             )
             lin_vel = torch.stack([
-                torch.FloatTensor(len(env_ids)).uniform_(self.min_lin_vel_xy, self.max_lin_vel_xy),
-                torch.FloatTensor(len(env_ids)).uniform_(self.min_lin_vel_xy, self.max_lin_vel_xy),
-                torch.FloatTensor(len(env_ids)).uniform_(self.min_lin_vel_z, self.max_lin_vel_z)
+                torch.FloatTensor(n_reset).uniform_(self.min_lin_vel_xy, self.max_lin_vel_xy),
+                torch.FloatTensor(n_reset).uniform_(self.min_lin_vel_xy, self.max_lin_vel_xy),
+                torch.FloatTensor(n_reset).uniform_(self.min_lin_vel_z, self.max_lin_vel_z)
             ], dim=1)
-            ang_vel = torch.FloatTensor(len(env_ids), 3).uniform_(self.min_ang_vel, self.max_ang_vel)
+            ang_vel = torch.FloatTensor(n_reset, 3).uniform_(self.min_ang_vel, self.max_ang_vel)
             default_root_state = torch.cat([pos, quat, lin_vel, ang_vel], dim=1)
         elif self.reset_mode == "ground":
             default_root_state = self._robot.data.default_root_state[env_ids]
