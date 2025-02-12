@@ -18,7 +18,7 @@ from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
 from omni.isaac.lab.utils import configclass
-from omni.isaac.lab.utils.math import subtract_frame_transforms, euler_xyz_from_quat, wrap_to_pi, matrix_from_quat
+from omni.isaac.lab.utils.math import subtract_frame_transforms, quat_from_euler_xyz, euler_xyz_from_quat, wrap_to_pi, matrix_from_quat
 
 from matplotlib import pyplot as plt
 from collections import deque
@@ -135,6 +135,12 @@ class QuadcopterEnv(DirectRLEnv):
         # Goal position
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
 
+        self.beta = 0.9
+        self.min_altitude = 0.1
+        self.max_altitude = 2.0
+        self.max_time_on_ground = 2.0
+        self.reset_mode = "alt_att" # "alt_no_att", "alt_att", "ground"
+
         self.last_yaw = 0.0
         self.n_laps = torch.zeros(self.num_envs, device=self.device)
         self.prob_change = 0.5
@@ -143,6 +149,17 @@ class QuadcopterEnv(DirectRLEnv):
         self.t_previous = torch.zeros(self.num_envs, device=self.device)
 
         self.episode_length_buf_zero = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+
+        self.min_roll_pitch = -torch.pi / 4.0
+        self.max_roll_pitch =  torch.pi /4.0
+        self.min_yaw = -torch.pi
+        self.max_yaw =  torch.pi
+        self.min_lin_vel_xy = -0.2
+        self.max_lin_vel_xy =  0.2
+        self.min_lin_vel_z = -0.1
+        self.max_lin_vel_z =  0.1
+        self.min_ang_vel = -0.1
+        self.max_ang_vel =  0.1
 
         if not self.is_train:
             self.change_setpoint = True
@@ -162,6 +179,10 @@ class QuadcopterEnv(DirectRLEnv):
             self.pitch_line, = self.rpy_axes[1].plot([], [], 'g', label="Pitch")
             self.yaw_line, = self.rpy_axes[2].plot([], [], 'b', label="Yaw")
             self.actions_lines = [self.rpy_axes[3].plot([], [], label=f"{legend}")[0] for legend in ["Thrust", "Roll rate", "Pitch rate", "Yaw rate"]]
+
+            if self.num_envs > 1:
+                self.draw_plots = False
+                plt.close(self.rpy_fig)
 
             # Configure subplots
             for ax, title in zip(self.rpy_axes, ["Roll History", "Pitch History", "Yaw History", "Actions History"]):
@@ -210,10 +231,7 @@ class QuadcopterEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor):
         self._actions = actions.clone().clamp(-1.0, 1.0)
-
-        beta = 0.9
-        self._actions = beta * self._actions + (1 - beta) * self.last_actions
-
+        self._actions = self.beta * self._actions + (1 - self.beta) * self.last_actions
         self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
         self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:]
 
@@ -346,11 +364,10 @@ class QuadcopterEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         cond_h_min_time = torch.logical_and(
-            self._robot.data.root_link_pos_w[:, 2] < 0.1, \
-            (self.episode_length_buf - self.episode_length_buf_zero) * self.cfg.sim.dt * self.cfg.decimation > 2.0
+            self._robot.data.root_link_pos_w[:, 2] < self.min_altitude, \
+            (self.episode_length_buf - self.episode_length_buf_zero) * self.cfg.sim.dt * self.cfg.decimation > self.max_time_on_ground
         )
-        # died = torch.logical_or(self._robot.data.root_link_pos_w[:, 2] < 0.1, self._robot.data.root_link_pos_w[:, 2] > 2.0)
-        died = torch.logical_or(cond_h_min_time, self._robot.data.root_link_pos_w[:, 2] > 2.0)
+        died = torch.logical_or(cond_h_min_time, self._robot.data.root_link_pos_w[:, 2] > self.max_altitude)
 
         return died, time_out
 
@@ -385,19 +402,44 @@ class QuadcopterEnv(DirectRLEnv):
 
         self._actions[env_ids] = 0.0
 
-        # Sample new commands
+        # Sample new desired position
         self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
         self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
         self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
 
-        # Reset robot state
-        joint_pos = self._robot.data.default_joint_pos[env_ids]
-        joint_vel = self._robot.data.default_joint_vel[env_ids]
-        default_root_state = self._robot.data.default_root_state[env_ids]
+        # Reset joints state
+        joint_pos = self._robot.data.default_joint_pos[env_ids]     # not important
+        joint_vel = self._robot.data.default_joint_vel[env_ids]     #
+        self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
+
+        # Reset robots state
+        default_root_state = self._robot.data.default_root_state[env_ids]   # [pos, quat, lin_vel, ang_vel] in local environment frame. Shape is (num_instances, 13)
+        print(default_root_state)
+        if self.reset_mode == "alt_no_att":
+            pass
+        elif self.reset_mode == "alt_att":
+            pos = default_root_state[:, :3]
+            # Randomize other values
+            quat = quat_from_euler_xyz(
+                torch.FloatTensor(len(env_ids)).uniform_(self.min_roll_pitch, self.max_roll_pitch),
+                torch.FloatTensor(len(env_ids)).uniform_(self.min_roll_pitch, self.max_roll_pitch),
+                torch.FloatTensor(len(env_ids)).uniform_(self.min_yaw, self.max_yaw)
+            )
+            lin_vel = torch.stack([
+                torch.FloatTensor(len(env_ids)).uniform_(self.min_lin_vel_xy, self.max_lin_vel_xy),
+                torch.FloatTensor(len(env_ids)).uniform_(self.min_lin_vel_xy, self.max_lin_vel_xy),
+                torch.FloatTensor(len(env_ids)).uniform_(self.min_lin_vel_z, self.max_lin_vel_z)
+            ], dim=1)
+            ang_vel = torch.FloatTensor(len(env_ids), 3).uniform_(self.min_ang_vel, self.max_ang_vel)
+            default_root_state = torch.cat([pos, quat, lin_vel, ang_vel], dim=1)
+        elif self.reset_mode == "ground":
+            default_root_state = self._robot.data.default_root_state[env_ids]
+            default_root_state[:, 2] = 0.0
+        else:
+            raise ValueError(f"Unknown reset mode: {self.reset_mode}")
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         self._robot.write_root_link_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_com_velocity_to_sim(default_root_state[:, 7:], env_ids)
-        self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
         # Reset variables
         self.n_laps[env_ids] = 0
