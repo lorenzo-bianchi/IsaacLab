@@ -53,7 +53,7 @@ class QuadcopterEnvWindow(BaseEnvWindow):
 @configclass
 class QuadcopterEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 20.0
+    episode_length_s = 20.0             # episode_length = episode_length_s / dt / decimation
     decimation = 2
     action_space = 4
     observation_space = (
@@ -113,7 +113,7 @@ class QuadcopterEnv(DirectRLEnv):
     def __init__(self, cfg: QuadcopterEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
-        # Get mode
+        # Get train/test mode
         if self.num_envs > 10:
             self.is_train = True
         else:
@@ -141,6 +141,8 @@ class QuadcopterEnv(DirectRLEnv):
         self.proximity_threshold = 0.1
         self.wait_time_s = 1.0
         self.t_previous = torch.zeros(self.num_envs, device=self.device)
+
+        self.episode_length_buf_zero = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
 
         if not self.is_train:
             self.change_setpoint = True
@@ -209,7 +211,7 @@ class QuadcopterEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor):
         self._actions = actions.clone().clamp(-1.0, 1.0)
 
-        beta = 0.8
+        beta = 0.9
         self._actions = beta * self._actions + (1 - beta) * self.last_actions
 
         self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
@@ -282,7 +284,7 @@ class QuadcopterEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
-        episode_time = self.episode_length_buf * self.cfg.sim.dt * self.cfg.decimation
+        episode_time = self.episode_length_buf * self.cfg.sim.dt * self.cfg.decimation  # updated at each step
         close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
         time_cond = (episode_time - self.t_previous) >= self.wait_time_s
         give_reward = torch.logical_and(close_to_goal, time_cond)
@@ -342,13 +344,14 @@ class QuadcopterEnv(DirectRLEnv):
         return reward
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
-        default_root_state = self._robot.data.default_root_state[:, :2] + self._terrain.env_origins[:, :2]
-        drone_pos = self._robot.data.root_link_pos_w[:, :2]
-
         time_out = self.episode_length_buf >= self.max_episode_length - 1
-        #cond_h_min = torch.logical_and(self._robot.data.root_link_pos_w[:, 2] < 0.1, \
-        #                               torch.sum(torch.square(drone_pos - default_root_state), dim=1) > 0.1)
-        died = torch.logical_or(self._robot.data.root_link_pos_w[:, 2] < 0.1, self._robot.data.root_link_pos_w[:, 2] > 2.0)
+        cond_h_min_time = torch.logical_and(
+            self._robot.data.root_link_pos_w[:, 2] < 0.1, \
+            (self.episode_length_buf - self.episode_length_buf_zero) * self.cfg.sim.dt * self.cfg.decimation > 2.0
+        )
+        # died = torch.logical_or(self._robot.data.root_link_pos_w[:, 2] < 0.1, self._robot.data.root_link_pos_w[:, 2] > 2.0)
+        died = torch.logical_or(cond_h_min_time, self._robot.data.root_link_pos_w[:, 2] > 2.0)
+
         return died, time_out
 
     def _reset_idx(self, env_ids: torch.Tensor | None):
@@ -375,15 +378,18 @@ class QuadcopterEnv(DirectRLEnv):
 
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
-        if len(env_ids) == self.num_envs:
+        if len(env_ids) == self.num_envs and self.num_envs > 1:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
+        self.episode_length_buf_zero = self.episode_length_buf.clone()
 
         self._actions[env_ids] = 0.0
+
         # Sample new commands
         self._desired_pos_w[env_ids, :2] = torch.zeros_like(self._desired_pos_w[env_ids, :2]).uniform_(-2.0, 2.0)
         self._desired_pos_w[env_ids, :2] += self._terrain.env_origins[env_ids, :2]
         self._desired_pos_w[env_ids, 2] = torch.zeros_like(self._desired_pos_w[env_ids, 2]).uniform_(0.5, 1.5)
+
         # Reset robot state
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
@@ -393,6 +399,7 @@ class QuadcopterEnv(DirectRLEnv):
         self._robot.write_root_com_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
 
+        # Reset variables
         self.n_laps[env_ids] = 0
         self.t_previous[env_ids] = 0.0
 
