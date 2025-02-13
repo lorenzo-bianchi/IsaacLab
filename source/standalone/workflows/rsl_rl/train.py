@@ -104,8 +104,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     yaw_reward_scale =  20.0
     new_goal_reward_scale = 100.0
 
-    cmd_smoothness_reward_scale = -1.5
-    cmd_body_rates_reward_scale = -0.3
+    cmd_smoothness_reward_scale = -1.0
+    cmd_body_rates_reward_scale = -0.1
     death_cost = -1000.0
     rewards = {
         'lin_vel_reward_scale': lin_vel_reward_scale,

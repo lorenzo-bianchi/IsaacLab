@@ -108,11 +108,9 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     robot: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     thrust_to_weight = 1.8  # 1.9
     moment_scale = 0.01
-    attitude_scale = 3.14159
-    attitude_scale_z = torch.pi - 1e-6
-    attitude_scale_xy = 0.2
-
-    control_mode = "CTATT" # "CTBM" or "CTATT" or "CTBR"
+    # attitude_scale = 3.14159
+    # attitude_scale_z = torch.pi - 1e-6
+    # attitude_scale_xy = 0.2
 
     # motor dynamics
     arm_length = 0.043
@@ -202,6 +200,7 @@ class QuadcopterEnv(DirectRLEnv):
         self.TM_to_f = torch.linalg.inv(self.f_to_TM)
 
         # Initialize variables
+        self.eps_tanh = 1e-3
         self.beta = 1.0         # 1.0 for no smoothing, 0.0 for no update
         self.min_altitude = 0.1
         self.max_altitude = 2.0
@@ -428,7 +427,8 @@ class QuadcopterEnv(DirectRLEnv):
             # approaching = self.closest_distance_to_goal - distance_to_goal
             # self.closest_distance_to_goal = torch.minimum(self.closest_distance_to_goal, distance_to_goal)
             # approaching = torch.clip(approaching, 0, 100)
-            convergence = 1 - torch.tanh(distance_to_goal / 0.04)
+            k = 2 * self.proximity_threshold / torch.log(torch.tensor(2.0 / self.eps_tanh - 1))
+            convergence = 1 - torch.tanh(distance_to_goal / k)
 
             yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
