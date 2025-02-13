@@ -17,12 +17,14 @@ import cli_args  # isort: skip
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
+parser.add_argument("--video_length", type=int, default=1000, help="Length of the recorded video (in steps).")
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument("--follow_robot", type=int, default=-1, help="Follow robot index.")
+
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -72,6 +74,14 @@ def main():
     print(f"[INFO] Loading experiment from directory: {log_root_path}")
     resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
     log_dir = os.path.dirname(resume_path)
+
+    if args_cli.follow_robot >= 0:
+        env_cfg.viewer.eye = (-0.5, 0.5, 0.5)
+        env_cfg.viewer.resolution = (1920, 1080)
+        env_cfg.viewer.lookat = (0.0, 0.0, 0.0)
+        env_cfg.viewer.origin_type = "asset_root"
+        env_cfg.viewer.env_index = args_cli.follow_robot
+        env_cfg.viewer.asset_name = "robot"
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
