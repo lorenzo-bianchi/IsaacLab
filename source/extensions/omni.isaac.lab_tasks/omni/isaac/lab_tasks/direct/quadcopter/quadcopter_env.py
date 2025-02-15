@@ -343,7 +343,7 @@ class QuadcopterEnv(DirectRLEnv):
         self._motor_speeds = self._motor_speeds.clamp(self.cfg.motor_speed_min, self.cfg.motor_speed_max) # Motor saturation
         # self._motor_speeds = self._motor_speeds_des # assume no delay to simplify the simulation
         motor_forces = self.cfg.k_eta * self._motor_speeds ** 2
-        wrench = torch.matmul(self.f_to_TM, motor_forces.t()).t()
+        wrench = torch.matmul(motor_forces, self.f_to_TM.t())
         
         self._thrust[:, 0, 2] = wrench[:, 0]
         self._moment[:, 0, :] = wrench[:, 1:]
