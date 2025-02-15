@@ -313,7 +313,7 @@ class QuadcopterEnv(DirectRLEnv):
         
         omega_err = self._robot.data.root_ang_vel_b - omega_des
         omega_dot_err = (omega_err - self._previous_omega_err) / self.cfg.pd_loop_rate_hz
-        omega_dot = self.cfg.kp_omega * omega_err + self.cfg.kd_omega * omega_dot_err
+        omega_dot = self.cfg.kp_omega * omega_err + self.cfg.kd_omega * omega_dot_err   # PD?
         self._previous_omega_err = omega_err
 
         cmd_moment = torch.bmm(self.inertia_tensor, omega_dot.unsqueeze(2)).squeeze(2)
@@ -323,18 +323,18 @@ class QuadcopterEnv(DirectRLEnv):
         self._actions = actions.clone().clamp(-1.0, 1.0)
         self._actions = self.beta * self._actions + (1 - self.beta) * self._previous_action
 
-        self._wrench_des[:, 0] = ((self._actions[:, 0] + 1.0) / 2.0) * (self._robot_weight * self._thrust_to_weight)
-        # compute wrench from desired body rates and current body rates using PD controller
-        self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)
+        self._wrench_des[:, 0] = ((self._actions[:, 0] + 1.0) / 2.0) * self._robot_weight * self._thrust_to_weight
 
-        self._motor_speeds_des = self._compute_motor_speeds(self._wrench_des)
+        # compute wrench from desired body rates and current body rates using PD controller
+        # self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)          ##
+        # self._motor_speeds_des = self._compute_motor_speeds(self._wrench_des)       ##
         self.pd_loop_counter = 0
 
     def _apply_action(self):
         # Update PD loop at a lower rate
         if self.pd_loop_counter % self.cfg.pd_loop_decimation == 0:
-            self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)
-            self._motor_speeds_des = self._compute_motor_speeds(self._wrench_des)
+            self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)      ##
+            self._motor_speeds_des = self._compute_motor_speeds(self._wrench_des)   ##
 
         self.pd_loop_counter += 1
 
