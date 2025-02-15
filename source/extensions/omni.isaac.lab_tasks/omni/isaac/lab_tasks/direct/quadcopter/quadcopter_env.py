@@ -214,7 +214,7 @@ class QuadcopterEnv(DirectRLEnv):
 
         self.last_yaw = 0.0
         self.prob_change = 0.5
-        self.proximity_threshold = 0.1
+        self.proximity_threshold = 0.25
         self.wait_time_s = 1.0
 
         self.min_roll_pitch = -torch.pi / 4.0
