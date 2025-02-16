@@ -345,7 +345,7 @@ class QuadcopterEnv(DirectRLEnv):
         motor_forces = self.cfg.k_eta * self._motor_speeds ** 2
         wrench = torch.matmul(motor_forces, self.f_to_TM.t())
         
-        self._thrust[:, 0, 2] = wrench[:, 0]
+        self._thrust[:, 0, 2] = wrench[:, 0]   # 0.2766420245170593
         self._moment[:, 0, :] = wrench[:, 1:]
         self._robot.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
 
