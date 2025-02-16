@@ -2,10 +2,10 @@ import paramiko
 import os
 import argparse
 
-def copy_all_files_recursive(remote_host, remote_folder, local_path):
-    if 'rl_games' in remote_folder:
+def copy_all_files_recursive(remote_host, remote_path, local_path, checkpoint):
+    if 'rl_games' in remote_path:
         rl_library = 'rl_games'
-    elif 'rsl_rl' in remote_folder:
+    elif 'rsl_rl' in remote_path:
         rl_library = 'rsl_rl'
     else:
         rl_library = None
@@ -40,10 +40,13 @@ def copy_all_files_recursive(remote_host, remote_folder, local_path):
 
             all_files = sftp.listdir(remote_dir)
             if rl_library == 'rsl_rl':
-                files = [filename for filename in all_files if 'model' in filename]
-                if not files:
-                    return
-                last_model = sorted(files, key=lambda x: int(x.split('_')[-1].split('.')[0]))[-1]
+                if checkpoint == None:
+                    files = [filename for filename in all_files if 'model' in filename]
+                    if not files:
+                        return
+                    model_to_copy = sorted(files, key=lambda x: int(x.split('_')[-1].split('.')[0]))[-1]
+                else:
+                    model_to_copy = f'model_{checkpoint}.pt'
 
             for item in all_files:
                 remote_item_path = os.path.join(remote_dir, item)
@@ -60,7 +63,7 @@ def copy_all_files_recursive(remote_host, remote_folder, local_path):
                             sftp.get(remote_item_path, local_item_path)
                             print(f"Copied file: {remote_item_path} to {local_item_path}")
                         elif rl_library == 'rsl_rl':
-                            if 'model_' in item and item != last_model:
+                            if 'model_' in item and item != model_to_copy:
                                 continue
                             sftp.get(remote_item_path, local_item_path)
                             print(f"Copied file: {remote_item_path} to {local_item_path}")
@@ -70,11 +73,11 @@ def copy_all_files_recursive(remote_host, remote_folder, local_path):
                     print(f"Error copying {item}: {e}")
 
         # Calculate local folder structure
-        relative_path = os.path.relpath(remote_folder, '/home/lorebia/Github/IsaacLab/logs')
+        relative_path = os.path.relpath(remote_path, '/home/lorebia/Github/IsaacLab/logs')
         local_full_path = os.path.join(local_path, relative_path)
 
         # Start recursive copy
-        copy_directory(remote_folder, local_full_path)
+        copy_directory(remote_path, local_full_path)
 
         # Close connections
         sftp.close()
@@ -86,12 +89,13 @@ def copy_all_files_recursive(remote_host, remote_folder, local_path):
 if __name__ == "__main__":
     # Set up argument parser for command line input
     parser = argparse.ArgumentParser(description="Recursively copy all files and directories from a remote server directory.")
-    parser.add_argument("remote_host", type=str, help="The name of the host defined in .ssh/config")
-    parser.add_argument("local_path", type=str, help="The local path where the files and directories will be copied")
-    parser.add_argument("remote_folder", type=str, help="The folder on the remote server to copy files from")
+    parser.add_argument("--remote_host", type=str, help="The name of the host defined in .ssh/config")
+    parser.add_argument("--local_path", type=str, help="The local path where the files and directories will be copied")
+    parser.add_argument("--remote_path", type=str, help="The folder on the remote server to copy files from")
+    parser.add_argument("--checkpoint", type=str, default=None, help="The checkpoint to copy from the remote server")
     
     # Parse the arguments from the command line
     args = parser.parse_args()
     
     # Call the recursive copy function
-    copy_all_files_recursive(args.remote_host, args.remote_folder, args.local_path)
+    copy_all_files_recursive(args.remote_host, args.remote_path, args.local_path, args.checkpoint)
