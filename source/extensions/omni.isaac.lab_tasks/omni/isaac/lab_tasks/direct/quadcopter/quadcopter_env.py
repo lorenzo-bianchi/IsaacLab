@@ -66,7 +66,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     state_space = 0
     debug_vis = True
 
-    sim_rate_hz = 1000
+    sim_rate_hz = 100
     policy_rate_hz = 50
     pd_loop_rate_hz = 100
     decimation = sim_rate_hz // policy_rate_hz
