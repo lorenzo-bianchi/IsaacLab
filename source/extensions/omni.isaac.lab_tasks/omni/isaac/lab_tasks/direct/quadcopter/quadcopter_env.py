@@ -66,7 +66,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     state_space = 0
     debug_vis = True
 
-    sim_rate_hz = 100
+    sim_rate_hz = 1000
     policy_rate_hz = 50
     pd_loop_rate_hz = 100
     decimation = sim_rate_hz // policy_rate_hz
@@ -200,6 +200,8 @@ class QuadcopterEnv(DirectRLEnv):
         self.TM_to_f = torch.linalg.inv(self.f_to_TM)
 
         # Initialize variables
+
+        self.use_simple_model = True
         self.eps_tanh = 1e-3
         self.beta = 1.0         # 1.0 for no smoothing, 0.0 for no update
         self.min_altitude = 0.1
@@ -321,32 +323,39 @@ class QuadcopterEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor):
         self._actions = actions.clone().clamp(-1.0, 1.0)
-        self._actions = self.beta * self._actions + (1 - self.beta) * self._previous_action
 
-        self._wrench_des[:, 0] = ((self._actions[:, 0] + 1.0) / 2.0) * self._robot_weight * self._thrust_to_weight
+        if self.use_simple_model:
+            self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
+            self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:]
+        else:
+            self._actions = self.beta * self._actions + (1 - self.beta) * self._previous_action
 
-        # compute wrench from desired body rates and current body rates using PD controller
-        # self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)          ##
-        # self._motor_speeds_des = self._compute_motor_speeds(self._wrench_des)       ##
-        self.pd_loop_counter = 0
+            self._wrench_des[:, 0] = ((self._actions[:, 0] + 1.0) / 2.0) * self._robot_weight * self._thrust_to_weight
+
+            # compute wrench from desired body rates and current body rates using PD controller
+            # self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)          ##
+            # self._motor_speeds_des = self._compute_motor_speeds(self._wrench_des)       ##
+            self.pd_loop_counter = 0
 
     def _apply_action(self):
-        # Update PD loop at a lower rate
-        if self.pd_loop_counter % self.cfg.pd_loop_decimation == 0:
-            self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)      ##
-            self._motor_speeds_des = self._compute_motor_speeds(self._wrench_des)   ##
+        if not self.use_simple_model:
+            # Update PD loop at a lower rate
+            if self.pd_loop_counter % self.cfg.pd_loop_decimation == 0:
+                self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)      ##
+                self._motor_speeds_des = self._compute_motor_speeds(self._wrench_des)   ##
 
-        self.pd_loop_counter += 1
+            self.pd_loop_counter += 1
 
-        motor_accel = (self._motor_speeds_des - self._motor_speeds) / self.cfg.tau_m
-        self._motor_speeds += motor_accel * self.physics_dt
-        self._motor_speeds = self._motor_speeds.clamp(self.cfg.motor_speed_min, self.cfg.motor_speed_max) # Motor saturation
-        # self._motor_speeds = self._motor_speeds_des # assume no delay to simplify the simulation
-        motor_forces = self.cfg.k_eta * self._motor_speeds ** 2
-        wrench = torch.matmul(motor_forces, self.f_to_TM.t())
-        
-        self._thrust[:, 0, 2] = wrench[:, 0]   # 0.2766420245170593
-        self._moment[:, 0, :] = wrench[:, 1:]
+            motor_accel = (self._motor_speeds_des - self._motor_speeds) / self.cfg.tau_m
+            self._motor_speeds += motor_accel * self.physics_dt
+            self._motor_speeds = self._motor_speeds.clamp(self.cfg.motor_speed_min, self.cfg.motor_speed_max) # Motor saturation
+            # self._motor_speeds = self._motor_speeds_des # assume no delay to simplify the simulation
+            motor_forces = self.cfg.k_eta * self._motor_speeds ** 2
+            wrench = torch.matmul(motor_forces, self.f_to_TM.t())
+            
+            self._thrust[:, 0, 2] = wrench[:, 0]
+            self._moment[:, 0, :] = wrench[:, 1:]
+
         self._robot.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
 
     def _get_observations(self) -> dict:
