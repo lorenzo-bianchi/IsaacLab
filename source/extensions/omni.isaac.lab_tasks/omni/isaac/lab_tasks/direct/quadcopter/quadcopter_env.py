@@ -106,7 +106,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # robot
     robot: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    thrust_to_weight = 1.8  # 1.9
+    thrust_to_weight = 1.9  # 1.9    ##################################################################
     moment_scale = 0.01
     # attitude_scale = 3.14159
     # attitude_scale_z = torch.pi - 1e-6
