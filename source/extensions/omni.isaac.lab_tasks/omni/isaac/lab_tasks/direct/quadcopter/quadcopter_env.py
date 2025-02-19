@@ -200,7 +200,7 @@ class QuadcopterEnv(DirectRLEnv):
         self.TM_to_f = torch.linalg.inv(self.f_to_TM)
 
         # Initialize variables
-        self.use_simple_model = False
+        self.use_simple_model = True
         if self.use_simple_model:   # FIXME: Remove this
             self._thrust_to_weight = 1.9 * torch.ones(self.num_envs, device=self.device)
         else:
