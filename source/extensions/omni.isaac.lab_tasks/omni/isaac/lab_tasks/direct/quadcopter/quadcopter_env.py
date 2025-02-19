@@ -35,7 +35,6 @@ class QuadcopterEnvWindow(BaseEnvWindow):
 
     def __init__(self, env: QuadcopterEnv, window_name: str = "IsaacLab"):
         """Initialize the window.
-
         Args:
             env: The environment object.
             window_name: The name of the window. Defaults to "IsaacLab".
@@ -106,11 +105,8 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # robot
     robot: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    thrust_to_weight = 1.9  # 1.9    ##################################################################
+    # thrust_to_weight = 1.9
     moment_scale = 0.01
-    # attitude_scale = 3.14159
-    # attitude_scale_z = torch.pi - 1e-6
-    # attitude_scale_xy = 0.2
 
     # motor dynamics
     arm_length = 0.043
@@ -129,8 +125,9 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     body_rate_scale_xy = 10.0
     body_rate_scale_z = 2.5
 
-    # reward scales
+    # Parameters from train.py or play.py
     rewards = {}
+    use_simple_model = None
 
 class QuadcopterEnv(DirectRLEnv):
     cfg: QuadcopterEnvCfg
@@ -158,6 +155,11 @@ class QuadcopterEnv(DirectRLEnv):
         self._wrench_des = torch.zeros(self.num_envs, 4, device=self.device)
         self._motor_speeds = torch.zeros(self.num_envs, 4, device=self.device)
         self._motor_speeds_des = torch.zeros(self.num_envs, 4, device=self.device)
+        if self.cfg.use_simple_model:
+            self.cfg.thrust_to_weight = 1.9
+        else:
+            exit()
+            self.cfg.thrust_to_weight = 1.8
         self._thrust_to_weight = self.cfg.thrust_to_weight * torch.ones(self.num_envs, device=self.device)
         self._hover_thrust = 2.0 / self.cfg.thrust_to_weight - 1.0
         self._nominal_action = torch.tensor([self._hover_thrust, 0.0, 0.0, 0.0], device=self.device).tile((self.num_envs, 1))
@@ -200,11 +202,6 @@ class QuadcopterEnv(DirectRLEnv):
         self.TM_to_f = torch.linalg.inv(self.f_to_TM)
 
         # Initialize variables
-        self.use_simple_model = True
-        if self.use_simple_model:   # FIXME: Remove this
-            self._thrust_to_weight = 1.9 * torch.ones(self.num_envs, device=self.device)
-        else:
-            self._thrust_to_weight = 1.8 * torch.ones(self.num_envs, device=self.device)
         self.eps_tanh = 1e-3
         self.beta = 1.0         # 1.0 for no smoothing, 0.0 for no update
         self.min_altitude = 0.1
@@ -213,8 +210,10 @@ class QuadcopterEnv(DirectRLEnv):
         if self.reset_mode == "alt_no_att":
             self.max_time_on_ground = 0.0
         elif self.reset_mode == "alt_att":
+            exit()
             self.max_time_on_ground = 0.0
         else:
+            exit()
             self.max_time_on_ground = 1.0
 
         self.last_yaw = 0.0
@@ -304,6 +303,7 @@ class QuadcopterEnv(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _compute_motor_speeds(self, wrench_des):
+        exit()
         f_des = torch.matmul(wrench_des, self.TM_to_f.t())
         motor_speed_squared = f_des / self.cfg.k_eta
         motor_speeds_des = torch.sign(motor_speed_squared) * torch.sqrt(torch.abs(motor_speed_squared))
@@ -312,6 +312,7 @@ class QuadcopterEnv(DirectRLEnv):
         return motor_speeds_des
     
     def _get_moment_from_ctbr(self, actions):
+        exit()
         omega_des = torch.zeros(self.num_envs, 3, device=self.device)
         omega_des[:, :2] = self.cfg.body_rate_scale_xy * actions[:, 1:3]
         omega_des[:, 2] = self.cfg.body_rate_scale_z * actions[:, 3]
@@ -327,10 +328,11 @@ class QuadcopterEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor):
         self._actions = actions.clone().clamp(-1.0, 1.0)
 
-        if self.use_simple_model:
+        if self.cfg.use_simple_model:
             self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
             self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:]
         else:
+            exit()
             self._actions = self.beta * self._actions + (1 - self.beta) * self._previous_action
 
             self._wrench_des[:, 0] = ((self._actions[:, 0] + 1.0) / 2.0) * self._robot_weight * self._thrust_to_weight
@@ -341,7 +343,8 @@ class QuadcopterEnv(DirectRLEnv):
             self.pd_loop_counter = 0
 
     def _apply_action(self):
-        if not self.use_simple_model:
+        if not self.cfg.use_simple_model:
+            exit()
             # Update PD loop at a lower rate
             if self.pd_loop_counter % self.cfg.pd_loop_decimation == 0:
                 self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)      ##
@@ -437,6 +440,8 @@ class QuadcopterEnv(DirectRLEnv):
             ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
 
             approaching = torch.relu(self._last_distance_to_goal - distance_to_goal)
+            self._last_distance_to_goal = distance_to_goal.clone()
+
             k = 2 * self.proximity_threshold / torch.log(torch.tensor(2.0 / self.eps_tanh - 1))
             convergence = 1 - torch.tanh(distance_to_goal / 0.04)
 
@@ -461,8 +466,6 @@ class QuadcopterEnv(DirectRLEnv):
             }
             reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
             reward = torch.where(self.reset_terminated, torch.ones_like(reward) * self.rew['death_cost'], reward)
-
-            self._last_distance_to_goal = distance_to_goal.clone()
 
             # Logging
             for key, value in rewards.items():
@@ -540,6 +543,7 @@ class QuadcopterEnv(DirectRLEnv):
         if self.reset_mode == "alt_no_att":
             pass
         elif self.reset_mode == "alt_att":
+            exit()
             pos = default_root_state[:, :3]
             # Randomize other values
             quat = quat_from_euler_xyz(
@@ -555,9 +559,11 @@ class QuadcopterEnv(DirectRLEnv):
             ang_vel = torch.FloatTensor(n_reset, 3).uniform_(self.min_ang_vel, self.max_ang_vel)
             default_root_state = torch.cat([pos, quat, lin_vel, ang_vel], dim=1)
         elif self.reset_mode == "ground":
+            exit()
             default_root_state = self._robot.data.default_root_state[env_ids]
             default_root_state[:, 2] = 0.0
         else:
+            exit()
             raise ValueError(f"Unknown reset mode: {self.reset_mode}")
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         self._robot.write_root_link_pose_to_sim(default_root_state[:, :7], env_ids)
