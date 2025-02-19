@@ -200,8 +200,11 @@ class QuadcopterEnv(DirectRLEnv):
         self.TM_to_f = torch.linalg.inv(self.f_to_TM)
 
         # Initialize variables
-
-        self.use_simple_model = True
+        self.use_simple_model = False
+        if self.use_simple_model:   # FIXME: Remove this
+            self._thrust_to_weight = 1.9 * torch.ones(self.num_envs, device=self.device)
+        else:
+            self._thrust_to_weight = 1.8 * torch.ones(self.num_envs, device=self.device)
         self.eps_tanh = 1e-3
         self.beta = 1.0         # 1.0 for no smoothing, 0.0 for no update
         self.min_altitude = 0.1
@@ -434,9 +437,6 @@ class QuadcopterEnv(DirectRLEnv):
             ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
 
             approaching = torch.relu(self._last_distance_to_goal - distance_to_goal)
-            # approaching = self.closest_distance_to_goal - distance_to_goal
-            # self.closest_distance_to_goal = torch.minimum(self.closest_distance_to_goal, distance_to_goal)
-            # approaching = torch.clip(approaching, 0, 100)
             k = 2 * self.proximity_threshold / torch.log(torch.tensor(2.0 / self.eps_tanh - 1))
             convergence = 1 - torch.tanh(distance_to_goal / k)
 
