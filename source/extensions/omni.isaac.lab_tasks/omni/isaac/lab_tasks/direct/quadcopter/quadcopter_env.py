@@ -108,6 +108,37 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # thrust_to_weight = 1.9
     moment_scale = 0.01
 
+    # Initialize variables
+    eps_tanh = 1e-3
+    beta = 1.0         # 1.0 for no smoothing, 0.0 for no update
+    min_altitude = 0.1
+    max_altitude = 2.0
+    reset_mode = "alt_no_att" # "alt_no_att", "alt_att", "ground"
+    if reset_mode == "alt_no_att":
+        max_time_on_ground = 0.0
+    elif reset_mode == "alt_att":
+        exit()
+        max_time_on_ground = 0.0
+    else:
+        exit()
+        max_time_on_ground = 1.0
+
+    last_yaw = 0.0
+    prob_change = 0.5
+    proximity_threshold = 0.1
+    wait_time_s = 1.0
+
+    min_roll_pitch = -torch.pi / 4.0
+    max_roll_pitch =  torch.pi /4.0
+    min_yaw = -torch.pi
+    max_yaw =  torch.pi
+    min_lin_vel_xy = -0.2
+    max_lin_vel_xy =  0.2
+    min_lin_vel_z = -0.1
+    max_lin_vel_z =  0.1
+    min_ang_vel = -0.1
+    max_ang_vel =  0.1
+
     # motor dynamics
     arm_length = 0.043
     k_eta = 2.3e-8
@@ -161,12 +192,9 @@ class QuadcopterEnv(DirectRLEnv):
             exit()
             self.cfg.thrust_to_weight = 1.8
         self._thrust_to_weight = self.cfg.thrust_to_weight * torch.ones(self.num_envs, device=self.device)
-        self._hover_thrust = 2.0 / self.cfg.thrust_to_weight - 1.0
-        self._nominal_action = torch.tensor([self._hover_thrust, 0.0, 0.0, 0.0], device=self.device).tile((self.num_envs, 1))
         self._previous_omega_err = torch.zeros(self.num_envs, 3, device=self.device)
 
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
-        self._desired_ori_w = torch.zeros(self.num_envs, 4, device=self.device)
 
         self._last_distance_to_goal = torch.zeros(self.num_envs, device=self.device)
         self._n_laps = torch.zeros(self.num_envs, device=self.device)
@@ -200,37 +228,6 @@ class QuadcopterEnv(DirectRLEnv):
             dim=0
         )
         self.TM_to_f = torch.linalg.inv(self.f_to_TM)
-
-        # Initialize variables
-        self.eps_tanh = 1e-3
-        self.beta = 1.0         # 1.0 for no smoothing, 0.0 for no update
-        self.min_altitude = 0.1
-        self.max_altitude = 2.0
-        self.reset_mode = "alt_no_att" # "alt_no_att", "alt_att", "ground"
-        if self.reset_mode == "alt_no_att":
-            self.max_time_on_ground = 0.0
-        elif self.reset_mode == "alt_att":
-            exit()
-            self.max_time_on_ground = 0.0
-        else:
-            exit()
-            self.max_time_on_ground = 1.0
-
-        self.last_yaw = 0.0
-        self.prob_change = 0.5
-        self.proximity_threshold = 0.1
-        self.wait_time_s = 1.0
-
-        self.min_roll_pitch = -torch.pi / 4.0
-        self.max_roll_pitch =  torch.pi /4.0
-        self.min_yaw = -torch.pi
-        self.max_yaw =  torch.pi
-        self.min_lin_vel_xy = -0.2
-        self.max_lin_vel_xy =  0.2
-        self.min_lin_vel_z = -0.1
-        self.max_lin_vel_z =  0.1
-        self.min_ang_vel = -0.1
-        self.max_ang_vel =  0.1
 
         if not self.is_train:
             self.change_setpoint = True
@@ -270,7 +267,6 @@ class QuadcopterEnv(DirectRLEnv):
             plt.ion()  # interactive mode
 
         # Logging
-        # get keys from self.rew.keys() except for death_cost and remove the _reward_scale suffix
         if self.is_train:
             keys = [key.split("_reward_scale")[0] for key in self.rew.keys() if key != "death_cost"]
             self._episode_sums = {
@@ -333,7 +329,7 @@ class QuadcopterEnv(DirectRLEnv):
             self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:]
         else:
             exit()
-            self._actions = self.beta * self._actions + (1 - self.beta) * self._previous_action
+            self._actions = self.cfg.beta * self._actions + (1 - self.cfg.beta) * self._previous_action
 
             self._wrench_des[:, 0] = ((self._actions[:, 0] + 1.0) / 2.0) * self._robot_weight * self._thrust_to_weight
 
@@ -386,12 +382,12 @@ class QuadcopterEnv(DirectRLEnv):
         rpy = euler_xyz_from_quat(quat_w)
         yaw_w = wrap_to_pi(rpy[2])
 
-        delta_yaw = yaw_w - self.last_yaw
+        delta_yaw = yaw_w - self.cfg.last_yaw
         self._n_laps += torch.where(delta_yaw < -np.pi, 1, 0)
         self._n_laps -= torch.where(delta_yaw > np.pi, 1, 0)
 
         self.unwrapped_yaw = yaw_w + 2 * np.pi * self._n_laps
-        self.last_yaw = yaw_w
+        self.cfg.last_yaw = yaw_w
 
         if not self.is_train:
             if self.draw_plots:
@@ -429,9 +425,9 @@ class QuadcopterEnv(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
         episode_time = self.episode_length_buf * self.cfg.sim.dt * self.cfg.decimation  # updated at each step
-        close_to_goal = (distance_to_goal < self.proximity_threshold).to(self.device)
+        close_to_goal = (distance_to_goal < self.cfg.proximity_threshold).to(self.device)
         slow_speed = torch.linalg.norm(self._robot.data.root_com_lin_vel_b, dim=1) < 0.1
-        time_cond = (episode_time - self._previous_t) >= self.wait_time_s
+        time_cond = (episode_time - self._previous_t) >= self.cfg.wait_time_s
         give_reward = torch.logical_and(torch.logical_and(close_to_goal, slow_speed), time_cond)
         ids = torch.where(give_reward)[0]
 
@@ -442,7 +438,7 @@ class QuadcopterEnv(DirectRLEnv):
             approaching = torch.relu(self._last_distance_to_goal - distance_to_goal)
             self._last_distance_to_goal = distance_to_goal.clone()
 
-            k = 2 * self.proximity_threshold / torch.log(torch.tensor(2.0 / self.eps_tanh - 1))
+            k = 2 * self.cfg.proximity_threshold / torch.log(torch.tensor(2.0 / self.cfg.eps_tanh - 1))
             convergence = 1 - torch.tanh(distance_to_goal / 0.04)
 
             yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
@@ -476,7 +472,7 @@ class QuadcopterEnv(DirectRLEnv):
         self._previous_action = self._actions.clone()
 
         self._previous_t[ids] = episode_time[ids]
-        change_setpoint_mask = (torch.rand(len(ids), device=self.device) < self.prob_change)
+        change_setpoint_mask = (torch.rand(len(ids), device=self.device) < self.cfg.prob_change)
         ids_to_change = ids[change_setpoint_mask]
         if len(ids_to_change) > 0:
             self._desired_pos_w[ids_to_change, :2] = torch.zeros_like(self._desired_pos_w[ids_to_change, :2]).uniform_(-2.0, 2.0)
@@ -489,10 +485,10 @@ class QuadcopterEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
         cond_h_min_time = torch.logical_and(
-            self._robot.data.root_link_pos_w[:, 2] < self.min_altitude, \
-            (self.episode_length_buf - self._episode_length_buf_zero) * self.cfg.sim.dt * self.cfg.decimation > self.max_time_on_ground
+            self._robot.data.root_link_pos_w[:, 2] < self.cfg.min_altitude, \
+            (self.episode_length_buf - self._episode_length_buf_zero) * self.cfg.sim.dt * self.cfg.decimation > self.cfg.max_time_on_ground
         )
-        died = torch.logical_or(cond_h_min_time, self._robot.data.root_link_pos_w[:, 2] > self.max_altitude)
+        died = torch.logical_or(cond_h_min_time, self._robot.data.root_link_pos_w[:, 2] > self.cfg.max_altitude)
 
         return died, time_out
 
@@ -540,31 +536,31 @@ class QuadcopterEnv(DirectRLEnv):
 
         # Reset robots state
         default_root_state = self._robot.data.default_root_state[env_ids]   # [pos, quat, lin_vel, ang_vel] in local environment frame. Shape is (num_instances, 13)
-        if self.reset_mode == "alt_no_att":
+        if self.cfg.reset_mode == "alt_no_att":
             pass
-        elif self.reset_mode == "alt_att":
+        elif self.cfg.reset_mode == "alt_att":
             exit()
             pos = default_root_state[:, :3]
             # Randomize other values
             quat = quat_from_euler_xyz(
-                torch.FloatTensor(n_reset).uniform_(self.min_roll_pitch, self.max_roll_pitch),
-                torch.FloatTensor(n_reset).uniform_(self.min_roll_pitch, self.max_roll_pitch),
-                torch.FloatTensor(n_reset).uniform_(self.min_yaw, self.max_yaw)
+                torch.FloatTensor(n_reset).uniform_(self.cfg.min_roll_pitch, self.cfg.max_roll_pitch),
+                torch.FloatTensor(n_reset).uniform_(self.cfg.min_roll_pitch, self.cfg.max_roll_pitch),
+                torch.FloatTensor(n_reset).uniform_(self.cfg.min_yaw, self.cfg.max_yaw)
             ).to(self.device)
             lin_vel = torch.stack([
-                torch.FloatTensor(n_reset).uniform_(self.min_lin_vel_xy, self.max_lin_vel_xy),
-                torch.FloatTensor(n_reset).uniform_(self.min_lin_vel_xy, self.max_lin_vel_xy),
-                torch.FloatTensor(n_reset).uniform_(self.min_lin_vel_z, self.max_lin_vel_z)
+                torch.FloatTensor(n_reset).uniform_(self.cfg.min_lin_vel_xy, self.cfg.max_lin_vel_xy),
+                torch.FloatTensor(n_reset).uniform_(self.cfg.min_lin_vel_xy, self.cfg.max_lin_vel_xy),
+                torch.FloatTensor(n_reset).uniform_(self.cfg.min_lin_vel_z, self.cfg.max_lin_vel_z)
             ], dim=1).to(self.device)
-            ang_vel = torch.FloatTensor(n_reset, 3).uniform_(self.min_ang_vel, self.max_ang_vel)
+            ang_vel = torch.FloatTensor(n_reset, 3).uniform_(self.cfg.min_ang_vel, self.cfg.max_ang_vel)
             default_root_state = torch.cat([pos, quat, lin_vel, ang_vel], dim=1)
-        elif self.reset_mode == "ground":
+        elif self.cfg.reset_mode == "ground":
             exit()
             default_root_state = self._robot.data.default_root_state[env_ids]
             default_root_state[:, 2] = 0.0
         else:
             exit()
-            raise ValueError(f"Unknown reset mode: {self.reset_mode}")
+            raise ValueError(f"Unknown reset mode: {self.cfg.reset_mode}")
         default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         self._robot.write_root_link_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_com_velocity_to_sim(default_root_state[:, 7:], env_ids)
