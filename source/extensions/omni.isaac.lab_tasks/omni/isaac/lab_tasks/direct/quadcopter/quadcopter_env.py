@@ -189,7 +189,6 @@ class QuadcopterEnv(DirectRLEnv):
         if self.cfg.use_simple_model:
             self.cfg.thrust_to_weight = 1.9
         else:
-            exit()
             self.cfg.thrust_to_weight = 1.8
         self._thrust_to_weight = self.cfg.thrust_to_weight * torch.ones(self.num_envs, device=self.device)
         self._previous_omega_err = torch.zeros(self.num_envs, 3, device=self.device)
@@ -299,7 +298,6 @@ class QuadcopterEnv(DirectRLEnv):
         light_cfg.func("/World/Light", light_cfg)
 
     def _compute_motor_speeds(self, wrench_des):
-        exit()
         f_des = torch.matmul(wrench_des, self.TM_to_f.t())
         motor_speed_squared = f_des / self.cfg.k_eta
         motor_speeds_des = torch.sign(motor_speed_squared) * torch.sqrt(torch.abs(motor_speed_squared))
@@ -308,7 +306,6 @@ class QuadcopterEnv(DirectRLEnv):
         return motor_speeds_des
     
     def _get_moment_from_ctbr(self, actions):
-        exit()
         omega_des = torch.zeros(self.num_envs, 3, device=self.device)
         omega_des[:, :2] = self.cfg.body_rate_scale_xy * actions[:, 1:3]
         omega_des[:, 2] = self.cfg.body_rate_scale_z * actions[:, 3]
@@ -328,7 +325,6 @@ class QuadcopterEnv(DirectRLEnv):
             self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
             self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:]
         else:
-            exit()
             self._actions = self.cfg.beta * self._actions + (1 - self.cfg.beta) * self._previous_action
 
             self._wrench_des[:, 0] = ((self._actions[:, 0] + 1.0) / 2.0) * self._robot_weight * self._thrust_to_weight
@@ -340,7 +336,6 @@ class QuadcopterEnv(DirectRLEnv):
 
     def _apply_action(self):
         if not self.cfg.use_simple_model:
-            exit()
             # Update PD loop at a lower rate
             if self.pd_loop_counter % self.cfg.pd_loop_decimation == 0:
                 self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)      ##
