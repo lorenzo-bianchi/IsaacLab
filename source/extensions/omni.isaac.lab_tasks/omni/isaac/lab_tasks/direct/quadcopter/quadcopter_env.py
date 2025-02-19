@@ -219,7 +219,7 @@ class QuadcopterEnv(DirectRLEnv):
 
         self.last_yaw = 0.0
         self.prob_change = 0.5
-        self.proximity_threshold = 0.15
+        self.proximity_threshold = 0.1
         self.wait_time_s = 1.0
 
         self.min_roll_pitch = -torch.pi / 4.0
@@ -438,7 +438,7 @@ class QuadcopterEnv(DirectRLEnv):
 
             approaching = torch.relu(self._last_distance_to_goal - distance_to_goal)
             k = 2 * self.proximity_threshold / torch.log(torch.tensor(2.0 / self.eps_tanh - 1))
-            convergence = 1 - torch.tanh(distance_to_goal / k)
+            convergence = 1 - torch.tanh(distance_to_goal / 0.04)
 
             yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 
