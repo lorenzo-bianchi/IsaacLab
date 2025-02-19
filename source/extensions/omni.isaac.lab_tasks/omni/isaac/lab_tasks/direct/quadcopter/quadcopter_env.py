@@ -105,7 +105,6 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # robot
     robot: ArticulationCfg = CRAZYFLIE_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    # thrust_to_weight = 1.9
     moment_scale = 0.01
 
     # Initialize variables
@@ -439,7 +438,7 @@ class QuadcopterEnv(DirectRLEnv):
             self._last_distance_to_goal = distance_to_goal.clone()
 
             k = 2 * self.cfg.proximity_threshold / torch.log(torch.tensor(2.0 / self.cfg.eps_tanh - 1))
-            convergence = 1 - torch.tanh(distance_to_goal / 0.04)
+            convergence = 1 - torch.tanh(distance_to_goal / k)
 
             yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
 

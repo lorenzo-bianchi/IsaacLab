@@ -1,0 +1,101 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/docker-existing-docker-compose
+{
+	"name": "Existing Docker Compose (Extend)",
+
+	// Update the 'dockerComposeFile' list if you have more compose files or use different names.
+	// The .devcontainer/docker-compose.yml file contains any overrides you need/want to make.
+	"dockerComposeFile": [
+		"../docker-compose.yaml",
+		"docker-compose.yml"
+	],
+
+	// The 'service' property is the name of the service for the container that VS Code should
+	// use. Update this value and .devcontainer/docker-compose.yml to the real service name.
+	"service": "isaac-lab-ros2",
+	// Uncomment the next line if you want start specific services in your Docker Compose config.
+	"runServices": ["isaac-lab-ros2"],
+	// Uncomment the next line if you want to keep your containers running after VS Code shuts down.
+	"shutdownAction": "stopCompose",
+	// Configure tool-specific properties.
+	"customizations": {
+		"vscode": {
+		"extensions": [
+			"vscode-icons-team.vscode-icons",
+			"github.copilot",
+			"ms-python.python",
+			"njpwerner.autodocstring",
+			"ms-vscode.cpptools",
+			"ms-vscode.cmake-tools",
+			"ms-vscode.makefile-tools",
+			"ms-iot.vscode-ros",
+			"ms-azuretools.vscode-docker",
+			"timonwong.shellcheck",
+			"redhat.vscode-yaml",
+			"dotjoshjohnson.xml",
+			"formulahendry.auto-close-tag",
+			"formulahendry.auto-rename-tag",
+			"yzhang.markdown-all-in-one",
+			"davidanson.vscode-markdownlint",
+			"aaron-bond.better-comments",
+			"jeff-hykin.better-syntax",
+			"gruntfuggly.todo-tree",
+			"eamodio.gitlens",
+			"donjayamanne.githistory",
+			"zachflower.uncrustify",
+			"shardulm94.trailing-spaces"
+		],
+		"settings": {
+			// Set Zsh as the default shell
+			"terminal.integrated.defaultProfile.linux": "zsh",
+			"terminal.integrated.profiles.linux": {
+			"zsh": {
+				"path": "/bin/zsh"
+			}
+			},
+			// Integrated terminal settings
+			"terminal.integrated.fontFamily": "MesloLGS NF",
+			"terminal.integrated.cursorStyle": "underline",
+			"terminal.integrated.cursorBlinking": true,
+			"workbench.colorCustomizations": {
+			"terminal.background": "#111111",
+			"terminal.foreground": "#FFFFFF",
+			"terminal.ansiBlack": "#000000",
+			"terminal.ansiBrightBlack": "#333333",
+			"terminal.ansiBlue": "#4040ff",
+			"terminal.ansiBrightBlue": "#1799f0",
+			"terminal.ansiCyan": "#00FFFF",
+			"terminal.ansiBrightCyan": "#00ffffde",
+			"terminal.ansiGreen": "#00FF00",
+			"terminal.ansiBrightGreen": "#36a10f",
+			"terminal.ansiMagenta": "#FF00FF",
+			"terminal.ansiBrightMagenta": "#9c4f7f",
+			"terminal.ansiRed": "#FF0000",
+			"terminal.ansiBrightRed": "#ff5640",
+			"terminal.ansiWhite": "#FFFFFF",
+			"terminal.ansiBrightWhite": "#FDF4C1",
+			"terminal.ansiYellow": "#FFFF00",
+			"terminal.ansiBrightYellow": "#FAC03B"
+			}
+		}
+		}
+	},
+
+	// The optional 'workspaceFolder' property is the path VS Code should open by default when
+	// connected. This is typically a file mount in .devcontainer/docker-compose.yml
+	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+	// Creates a sleeping process that VSC uses to stop the container
+	"overrideCommand": true
+
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	// "features": {},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Uncomment the next line to run commands after the container is created.
+	// "postCreateCommand": "cat /etc/os-release",
+
+	// Uncomment to connect as an existing user other than the container default. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "devcontainer"
+}
