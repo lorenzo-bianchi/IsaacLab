@@ -234,7 +234,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = False
+            self.draw_plots = True
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -425,7 +425,7 @@ class QuadcopterEnv(DirectRLEnv):
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
         episode_time = self.episode_length_buf * self.cfg.sim.dt * self.cfg.decimation  # updated at each step
         close_to_goal = (distance_to_goal < self.cfg.proximity_threshold).to(self.device)
-        slow_speed = torch.linalg.norm(self._robot.data.root_com_lin_vel_b, dim=1) < 0.1
+        slow_speed = torch.linalg.norm(self._robot.data.root_com_lin_vel_b, dim=1) < 100.0
         time_cond = (episode_time - self._previous_t) >= self.cfg.wait_time_s
         give_reward = torch.logical_and(torch.logical_and(close_to_goal, slow_speed), time_cond)
         ids = torch.where(give_reward)[0]
