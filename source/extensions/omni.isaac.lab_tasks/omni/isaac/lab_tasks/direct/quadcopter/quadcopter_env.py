@@ -437,9 +437,8 @@ class QuadcopterEnv(DirectRLEnv):
 
 
             # approaching = torch.relu(self._last_distance_to_goal - distance_to_goal)
-            approaching = self.closest_distance_to_goal - distance_to_goal
+            approaching = torch.relu(self.closest_distance_to_goal - distance_to_goal)
             self.closest_distance_to_goal = torch.minimum(self.closest_distance_to_goal, distance_to_goal)
-            approaching = torch.relu(approaching)
             self.closest_distance_to_goal = torch.where(
                 self.closest_distance_to_goal < 0.0, distance_to_goal, self.closest_distance_to_goal
             )
@@ -580,6 +579,7 @@ class QuadcopterEnv(DirectRLEnv):
         # Reset variables
         self._n_laps[env_ids] = 0
         self._previous_t[env_ids] = 0.0
+        self.closest_distance_to_goal[env_ids] = -1.0
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # create markers if necessary for the first time
