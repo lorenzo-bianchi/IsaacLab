@@ -200,6 +200,8 @@ class QuadcopterEnv(DirectRLEnv):
         self._previous_t = torch.zeros(self.num_envs, device=self.device)
         self._episode_length_buf_zero = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
 
+        self.closest_distance_to_goal = -torch.ones(self.num_envs, device=self.device)
+
         # Things necessary for motor dynamics
         r2o2 = np.sqrt(2.0) / 2.0
         self._rotor_positions = torch.cat(
@@ -234,7 +236,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = True
+            self.draw_plots = False
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -430,7 +432,22 @@ class QuadcopterEnv(DirectRLEnv):
             lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
             ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
 
-            approaching = torch.relu(self._last_distance_to_goal - distance_to_goal)
+
+
+
+
+            # approaching = torch.relu(self._last_distance_to_goal - distance_to_goal)
+            approaching = self.closest_distance_to_goal - distance_to_goal
+            self.closest_distance_to_goal = torch.minimum(self.closest_distance_to_goal, distance_to_goal)
+            approaching = torch.relu(approaching)
+            self.closest_distance_to_goal = torch.where(
+                self.closest_distance_to_goal < 0.0, distance_to_goal, self.closest_distance_to_goal
+            )
+
+
+
+
+
             self._last_distance_to_goal = distance_to_goal.clone()
 
             k = 2 * self.cfg.proximity_threshold / torch.log(torch.tensor(2.0 / self.cfg.eps_tanh - 1))
