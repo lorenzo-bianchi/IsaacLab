@@ -234,7 +234,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = False
+            self.draw_plots = True
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
