@@ -426,15 +426,11 @@ class QuadcopterEnv(DirectRLEnv):
         slow_speed = torch.linalg.norm(self._robot.data.root_com_lin_vel_b, dim=1) < self.cfg.velocity_threshold
         time_cond = (episode_time - self._previous_t) >= self.cfg.wait_time_s
         give_reward = torch.logical_and(torch.logical_and(close_to_goal, slow_speed), time_cond)
-        ids = torch.where(give_reward)[0]
+        ids_reward = torch.where(give_reward)[0]
 
         if self.is_train:
             lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
             ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
-
-
-
-
 
             # approaching = torch.relu(self._last_distance_to_goal - distance_to_goal)
             approaching = torch.relu(self.closest_distance_to_goal - distance_to_goal)
@@ -442,10 +438,6 @@ class QuadcopterEnv(DirectRLEnv):
             self.closest_distance_to_goal = torch.where(
                 self.closest_distance_to_goal < 0.0, distance_to_goal, self.closest_distance_to_goal
             )
-
-
-
-
 
             self._last_distance_to_goal = distance_to_goal.clone()
 
@@ -482,9 +474,12 @@ class QuadcopterEnv(DirectRLEnv):
 
         self._previous_action = self._actions.clone()
 
-        self._previous_t[ids] = episode_time[ids]
-        change_setpoint_mask = (torch.rand(len(ids), device=self.device) < self.cfg.prob_change)
-        ids_to_change = ids[change_setpoint_mask]
+        # check to change setpoint
+        ids_not_close = torch.where(torch.logical_not(close_to_goal))[0]
+        self._previous_t[ids_not_close] = episode_time[ids_not_close]
+        # self._previous_t[ids_reward] = episode_time[ids_reward]
+        change_setpoint_mask = (torch.rand(len(ids_reward), device=self.device) < self.cfg.prob_change)
+        ids_to_change = ids_reward[change_setpoint_mask]
         if len(ids_to_change) > 0:
             self._desired_pos_w[ids_to_change, :2] = torch.zeros_like(self._desired_pos_w[ids_to_change, :2]).uniform_(-2.0, 2.0)
             self._desired_pos_w[ids_to_change, :2] += self._terrain.env_origins[ids_to_change, :2]
