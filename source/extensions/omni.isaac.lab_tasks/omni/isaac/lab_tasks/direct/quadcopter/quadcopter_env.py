@@ -126,7 +126,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     prob_change = 0.5
     proximity_threshold = 0.1
     velocity_threshold = 100.0
-    wait_time_s = 0.0
+    wait_time_s = 1.0
 
     min_roll_pitch = -torch.pi / 4.0
     max_roll_pitch =  torch.pi /4.0
