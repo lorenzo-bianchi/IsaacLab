@@ -102,7 +102,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     approaching_goal_reward_scale = 900.0
     convergence_goal_reward_scale = 0.0
     yaw_reward_scale = 0.0
-    new_goal_reward_scale = 75.0
+    new_goal_reward_scale = 90.0
     cmd_smoothness_reward_scale = -1.5
     cmd_body_rates_reward_scale = -0.3
     death_cost = -1000.0
