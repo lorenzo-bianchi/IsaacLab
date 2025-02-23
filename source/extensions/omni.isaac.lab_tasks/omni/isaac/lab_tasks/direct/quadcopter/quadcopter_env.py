@@ -123,10 +123,6 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
         max_time_on_ground = 1.0
 
     last_yaw = 0.0
-    prob_change = 0.005
-    proximity_threshold = 0.1
-    velocity_threshold = 100.0
-    wait_time_s = 0.0
 
     min_roll_pitch = -torch.pi / 4.0
     max_roll_pitch =  torch.pi /4.0
@@ -157,8 +153,13 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     body_rate_scale_z = 2.5
 
     # Parameters from train.py or play.py
-    rewards = {}
     use_simple_model = None
+
+    prob_change = 0.005
+    proximity_threshold = 0.1
+    velocity_threshold = 100.0
+    wait_time_s = 0.0
+    rewards = {}
 
 class QuadcopterEnv(DirectRLEnv):
     cfg: QuadcopterEnvCfg
