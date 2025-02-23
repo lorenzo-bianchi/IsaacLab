@@ -123,7 +123,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
         max_time_on_ground = 1.0
 
     last_yaw = 0.0
-    prob_change = 0.95
+    prob_change = 0.995
     proximity_threshold = 0.1
     velocity_threshold = 100.0
     wait_time_s = 0.0
