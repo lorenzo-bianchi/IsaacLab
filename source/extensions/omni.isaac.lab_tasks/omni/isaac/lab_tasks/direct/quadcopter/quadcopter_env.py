@@ -158,7 +158,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     prob_change = 0.01
     proximity_threshold = 0.1
     velocity_threshold = 100.0
-    wait_time_s = 0.3
+    wait_time_s = 0.0
     rewards = {}
 
 class QuadcopterEnv(DirectRLEnv):
