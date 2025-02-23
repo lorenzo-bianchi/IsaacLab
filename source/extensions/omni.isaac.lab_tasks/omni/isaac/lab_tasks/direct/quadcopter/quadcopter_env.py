@@ -123,10 +123,10 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
         max_time_on_ground = 1.0
 
     last_yaw = 0.0
-    prob_change = 0.5
+    prob_change = 0.95
     proximity_threshold = 0.1
     velocity_threshold = 100.0
-    wait_time_s = 1.0
+    wait_time_s = 0.0
 
     min_roll_pitch = -torch.pi / 4.0
     max_roll_pitch =  torch.pi /4.0
@@ -236,7 +236,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = False
+            self.draw_plots = True
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
