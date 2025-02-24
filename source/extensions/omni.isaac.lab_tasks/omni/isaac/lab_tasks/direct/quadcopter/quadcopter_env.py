@@ -151,12 +151,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     body_rate_scale_z = 2.5
 
     # Parameters from train.py or play.py
-    use_simple_model = None
-
-    prob_change = 0.05
-    proximity_threshold = 0.1
-    velocity_threshold = 100.0
-    wait_time_s = 0.0
+    params = {}
     rewards = {}
 
 class QuadcopterEnv(DirectRLEnv):
@@ -181,13 +176,12 @@ class QuadcopterEnv(DirectRLEnv):
         self._previous_action = torch.zeros(self.num_envs, self.cfg.action_space, device=self.device)
         self._previous_yaw = torch.zeros(self.num_envs, device=self.device)
         
-
         self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._wrench_des = torch.zeros(self.num_envs, 4, device=self.device)
         self._motor_speeds = torch.zeros(self.num_envs, 4, device=self.device)
         self._motor_speeds_des = torch.zeros(self.num_envs, 4, device=self.device)
-        if self.cfg.use_simple_model:
+        if self.cfg.params['use_simple_model']:
             self.cfg.thrust_to_weight = 1.9
         else:
             self.cfg.thrust_to_weight = 1.8
@@ -324,7 +318,7 @@ class QuadcopterEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor):
         self._actions = actions.clone().clamp(-1.0, 1.0)
 
-        if self.cfg.use_simple_model:
+        if self.cfg.params['use_simple_model']:
             self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
             self._moment[:, 0, :] = self.cfg.moment_scale * self._actions[:, 1:]
         else:
@@ -338,7 +332,7 @@ class QuadcopterEnv(DirectRLEnv):
             self.pd_loop_counter = 0
 
     def _apply_action(self):
-        if not self.cfg.use_simple_model:
+        if not self.cfg.params['use_simple_model']:
             # Update PD loop at a lower rate
             if self.pd_loop_counter % self.cfg.pd_loop_decimation == 0:
                 self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)      ##
@@ -423,9 +417,9 @@ class QuadcopterEnv(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
         episode_time = self.episode_length_buf * self.cfg.sim.dt * self.cfg.decimation  # updated at each step
-        close_to_goal = (distance_to_goal < self.cfg.proximity_threshold).to(self.device)
-        slow_speed = torch.linalg.norm(self._robot.data.root_com_lin_vel_b, dim=1) < self.cfg.velocity_threshold
-        time_cond = (episode_time - self._previous_t) >= self.cfg.wait_time_s
+        close_to_goal = (distance_to_goal < self.cfg.params['proximity_threshold']).to(self.device)
+        slow_speed = torch.linalg.norm(self._robot.data.root_com_lin_vel_b, dim=1) < self.cfg.params['velocity_threshold']
+        time_cond = (episode_time - self._previous_t) >= self.cfg.params['wait_time_s']
         give_reward = torch.logical_and(torch.logical_and(close_to_goal, slow_speed), time_cond)
         ids_reward = torch.where(give_reward)[0]
 
@@ -442,7 +436,7 @@ class QuadcopterEnv(DirectRLEnv):
 
             self._last_distance_to_goal = distance_to_goal.clone()
 
-            k = 2 * self.cfg.proximity_threshold / torch.log(torch.tensor(2.0 / self.cfg.eps_tanh - 1))
+            k = 2 * self.cfg.params['proximity_threshold'] / torch.log(torch.tensor(2.0 / self.cfg.eps_tanh - 1))
             convergence = 1 - torch.tanh(distance_to_goal / k)
 
             yaw_w_mapped = torch.exp(-10.0 * torch.abs(self.unwrapped_yaw))
@@ -479,7 +473,7 @@ class QuadcopterEnv(DirectRLEnv):
         ids_not_close = torch.where(torch.logical_not(close_to_goal))[0]
         self._previous_t[ids_not_close] = episode_time[ids_not_close]
         # self._previous_t[ids_reward] = episode_time[ids_reward]
-        change_setpoint_mask = (torch.rand(len(ids_reward), device=self.device) < self.cfg.prob_change)
+        change_setpoint_mask = (torch.rand(len(ids_reward), device=self.device) < self.cfg.params['prob_change'])
         ids_to_change = ids_reward[change_setpoint_mask]
         if len(ids_to_change) > 0:
             self._desired_pos_w[ids_to_change, :2] = torch.zeros_like(self._desired_pos_w[ids_to_change, :2]).uniform_(-2.0, 2.0)

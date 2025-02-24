@@ -106,6 +106,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     cmd_smoothness_reward_scale = -1.5
     cmd_body_rates_reward_scale = -0.3
     death_cost = -1000.0
+
+    prob_change = 0.05
+    proximity_threshold = 0.1
+    velocity_threshold = 100.0
+    wait_time_s = 0.0
+    use_simple_model = False
+
     rewards = {
         'lin_vel_reward_scale': lin_vel_reward_scale,
         'ang_vel_reward_scale': ang_vel_reward_scale,
@@ -117,9 +124,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         'cmd_body_rates_reward_scale': cmd_body_rates_reward_scale,
         'death_cost': death_cost
     }
+    params = {
+        'prob_change': prob_change,
+        'proximity_threshold': proximity_threshold,
+        'velocity_threshold': velocity_threshold,
+        'wait_time_s': wait_time_s,
+        'use_simple_model': use_simple_model
+    }
 
     env_cfg.rewards = rewards
-    env_cfg.use_simple_model = False
+    env_cfg.params = params
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None, rewards=rewards)
