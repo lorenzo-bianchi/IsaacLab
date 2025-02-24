@@ -155,7 +155,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # Parameters from train.py or play.py
     use_simple_model = None
 
-    prob_change = 0.01
+    prob_change = 0.05
     proximity_threshold = 0.1
     velocity_threshold = 100.0
     wait_time_s = 0.0
