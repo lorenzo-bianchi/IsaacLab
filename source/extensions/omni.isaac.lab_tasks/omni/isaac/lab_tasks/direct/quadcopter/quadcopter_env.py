@@ -14,6 +14,7 @@ from omni.isaac.lab.assets import Articulation, ArticulationCfg
 from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
 from omni.isaac.lab.envs.ui import BaseEnvWindow
 from omni.isaac.lab.markers import VisualizationMarkers
+from omni.isaac.lab.markers.visualization_markers import VisualizationMarkersCfg
 from omni.isaac.lab.scene import InteractiveSceneCfg
 from omni.isaac.lab.sim import SimulationCfg
 from omni.isaac.lab.terrains import TerrainImporterCfg
@@ -23,12 +24,38 @@ from omni.isaac.lab.utils.math import subtract_frame_transforms, quat_from_euler
 from matplotlib import pyplot as plt
 from collections import deque
 
+
 ##
 # Pre-defined configs
 ##
 from omni.isaac.lab_assets import CRAZYFLIE_CFG  # isort: skip
-from omni.isaac.lab.markers import CUBOID_MARKER_CFG  # isort: skip
 
+GOAL_MARKER_CFG = VisualizationMarkersCfg(
+    markers={
+        "sphere": sim_utils.SphereCfg(
+            radius=0.01,
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        ),
+        "cylinderX": sim_utils.CylinderCfg(
+            radius=0.01,
+            height=0.02,
+            axis="X",
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        ),
+        "cylinderY": sim_utils.CylinderCfg(
+            radius=0.01,
+            height=0.02,
+            axis="Y",
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        ),
+        "cylinderZ": sim_utils.CylinderCfg(
+            radius=0.01,
+            height=0.02,
+            axis="Z",
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        ),
+    }
+)
 
 class QuadcopterEnvWindow(BaseEnvWindow):
     """Window manager for the Quadcopter environment."""
@@ -152,10 +179,10 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # Parameters from train.py or play.py
     use_simple_model = None
-    prob_change = 0.1
+    prob_change = 0.5
     proximity_threshold = 0.1
     velocity_threshold = 100.0
-    wait_time_s = 0.0
+    wait_time_s = 1.0
     rewards = {}
 
 class QuadcopterEnv(DirectRLEnv):
@@ -195,6 +222,7 @@ class QuadcopterEnv(DirectRLEnv):
         self._episode_length_buf_zero = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
 
         self.closest_distance_to_goal = -torch.ones(self.num_envs, device=self.device)
+        self.first_approach = torch.ones(self.num_envs, device=self.device, dtype=torch.bool)
 
         # Things necessary for motor dynamics
         self.cfg.thrust_to_weight = 1.9 if self.cfg.use_simple_model else 1.8
@@ -231,7 +259,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = True
+            self.draw_plots = False
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -418,9 +446,16 @@ class QuadcopterEnv(DirectRLEnv):
         distance_to_goal = torch.linalg.norm(self._desired_pos_w - self._robot.data.root_link_pos_w, dim=1)
         episode_time = self.episode_length_buf * self.cfg.sim.dt * self.cfg.decimation  # updated at each step
         close_to_goal = (distance_to_goal < self.cfg.proximity_threshold).to(self.device)
+        initial_cond = self.first_approach & close_to_goal
+        # self.first_approach = ~initial_cond
         slow_speed = torch.linalg.norm(self._robot.data.root_com_lin_vel_b, dim=1) < self.cfg.velocity_threshold
         time_cond = (episode_time - self._previous_t) >= self.cfg.wait_time_s
-        give_reward = torch.logical_and(torch.logical_and(close_to_goal, slow_speed), time_cond)
+
+        give_reward = torch.where(
+            initial_cond,
+            torch.tensor(True, device=self.device),
+            close_to_goal & slow_speed & time_cond
+        )
         ids_reward = torch.where(give_reward)[0]
 
         if self.is_train:
@@ -472,14 +507,16 @@ class QuadcopterEnv(DirectRLEnv):
         # check to change setpoint
         ids_not_close = torch.where(torch.logical_not(close_to_goal))[0]
         self._previous_t[ids_not_close] = episode_time[ids_not_close]
-        # self._previous_t[ids_reward] = episode_time[ids_reward]
-        change_setpoint_mask = (torch.rand(len(ids_reward), device=self.device) < self.cfg.prob_change)
+        self._previous_t[ids_reward] = episode_time[ids_reward]
+        change_setpoint_mask = ~self.first_approach[ids_reward] & (torch.rand(len(ids_reward), device=self.device) < self.cfg.prob_change)
+        self.first_approach = self.first_approach & ~close_to_goal
         ids_to_change = ids_reward[change_setpoint_mask]
+        self.first_approach[ids_to_change] = True
         if len(ids_to_change) > 0:
             self._desired_pos_w[ids_to_change, :2] = torch.zeros_like(self._desired_pos_w[ids_to_change, :2]).uniform_(-2.0, 2.0)
             self._desired_pos_w[ids_to_change, :2] += self._terrain.env_origins[ids_to_change, :2]
             self._desired_pos_w[ids_to_change, 2] = torch.zeros_like(self._desired_pos_w[ids_to_change, 2]).uniform_(0.5, 1.5)
-            self._previous_t[ids_to_change] = 0.0
+            self._previous_t[ids_to_change] = episode_time[ids_to_change]
 
         return reward
 
@@ -570,13 +607,16 @@ class QuadcopterEnv(DirectRLEnv):
         self._n_laps[env_ids] = 0
         self._previous_t[env_ids] = 0.0
         self.closest_distance_to_goal[env_ids] = -1.0
+        self.first_approach[env_ids] = True
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # create markers if necessary for the first time
         if debug_vis:
             if not hasattr(self, "goal_pos_visualizer"):
-                marker_cfg = CUBOID_MARKER_CFG.copy()
-                marker_cfg.markers["cuboid"].size = (0.05, 0.05, 0.05)
+                marker_cfg = GOAL_MARKER_CFG.copy()
+                marker_cfg.markers["cylinderX"].height = self.cfg.proximity_threshold
+                marker_cfg.markers["cylinderY"].height = self.cfg.proximity_threshold
+                marker_cfg.markers["cylinderZ"].height = self.cfg.proximity_threshold
                 # -- goal pose
                 marker_cfg.prim_path = "/Visuals/Command/goal_position"
                 self.goal_pos_visualizer = VisualizationMarkers(marker_cfg)
