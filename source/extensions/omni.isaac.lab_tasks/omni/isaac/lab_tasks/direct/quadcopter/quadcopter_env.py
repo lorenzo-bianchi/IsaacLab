@@ -152,8 +152,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
 
     # Parameters from train.py or play.py
     use_simple_model = None
-
-    prob_change = 0.05
+    prob_change = 0.1
     proximity_threshold = 0.1
     velocity_threshold = 100.0
     wait_time_s = 0.0
@@ -180,14 +179,12 @@ class QuadcopterEnv(DirectRLEnv):
         self._actions = torch.zeros(self.num_envs, self.cfg.action_space, device=self.device)
         self._previous_action = torch.zeros(self.num_envs, self.cfg.action_space, device=self.device)
         self._previous_yaw = torch.zeros(self.num_envs, device=self.device)
-        
 
         self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._wrench_des = torch.zeros(self.num_envs, 4, device=self.device)
         self._motor_speeds = torch.zeros(self.num_envs, 4, device=self.device)
         self._motor_speeds_des = torch.zeros(self.num_envs, 4, device=self.device)
-        self.cfg.thrust_to_weight = 1.9 if self.cfg.use_simple_model else 1.8
         self._previous_omega_err = torch.zeros(self.num_envs, 3, device=self.device)
 
         self._desired_pos_w = torch.zeros(self.num_envs, 3, device=self.device)
@@ -200,6 +197,7 @@ class QuadcopterEnv(DirectRLEnv):
         self.closest_distance_to_goal = -torch.ones(self.num_envs, device=self.device)
 
         # Things necessary for motor dynamics
+        self.cfg.thrust_to_weight = 1.9 if self.cfg.use_simple_model else 1.8
         r2o2 = np.sqrt(2.0) / 2.0
         self._rotor_positions = torch.cat(
             [
