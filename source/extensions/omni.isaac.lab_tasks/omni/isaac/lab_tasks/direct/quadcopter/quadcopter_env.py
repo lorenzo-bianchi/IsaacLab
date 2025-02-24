@@ -122,8 +122,6 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
         exit()
         max_time_on_ground = 1.0
 
-    last_yaw = 0.0
-
     min_roll_pitch = -torch.pi / 4.0
     max_roll_pitch =  torch.pi /4.0
     min_yaw = -torch.pi
@@ -181,6 +179,8 @@ class QuadcopterEnv(DirectRLEnv):
         # Initialize tensors
         self._actions = torch.zeros(self.num_envs, self.cfg.action_space, device=self.device)
         self._previous_action = torch.zeros(self.num_envs, self.cfg.action_space, device=self.device)
+        self._previous_yaw = torch.zeros(self.num_envs, device=self.device)
+        
 
         self._thrust = torch.zeros(self.num_envs, 1, 3, device=self.device)
         self._moment = torch.zeros(self.num_envs, 1, 3, device=self.device)
@@ -380,12 +380,12 @@ class QuadcopterEnv(DirectRLEnv):
         rpy = euler_xyz_from_quat(quat_w)
         yaw_w = wrap_to_pi(rpy[2])
 
-        delta_yaw = yaw_w - self.cfg.last_yaw
+        delta_yaw = yaw_w - self._previous_yaw
         self._n_laps += torch.where(delta_yaw < -np.pi, 1, 0)
         self._n_laps -= torch.where(delta_yaw > np.pi, 1, 0)
 
         self.unwrapped_yaw = yaw_w + 2 * np.pi * self._n_laps
-        self.cfg.last_yaw = yaw_w
+        self._previous_yaw = yaw_w
 
         if not self.is_train:
             if self.draw_plots:

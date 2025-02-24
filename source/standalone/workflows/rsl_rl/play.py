@@ -83,6 +83,8 @@ def main():
         env_cfg.viewer.env_index = args_cli.follow_robot
         env_cfg.viewer.asset_name = "robot"
 
+    env_cfg.use_simple_model = False
+
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
