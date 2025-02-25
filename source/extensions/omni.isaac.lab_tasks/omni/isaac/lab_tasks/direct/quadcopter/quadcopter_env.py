@@ -36,24 +36,24 @@ GOAL_MARKER_CFG = VisualizationMarkersCfg(
             radius=0.01,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
         ),
-        "cylinderX": sim_utils.CylinderCfg(
-            radius=0.01,
-            height=0.02,
-            axis="X",
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
-        ),
-        "cylinderY": sim_utils.CylinderCfg(
-            radius=0.01,
-            height=0.02,
-            axis="Y",
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
-        ),
-        "cylinderZ": sim_utils.CylinderCfg(
-            radius=0.01,
-            height=0.02,
-            axis="Z",
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
-        ),
+        # "cylinderX": sim_utils.CylinderCfg(
+        #     radius=0.01,
+        #     height=0.02,
+        #     axis="X",
+        #     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        # ),
+        # "cylinderY": sim_utils.CylinderCfg(
+        #     radius=0.01,
+        #     height=0.02,
+        #     axis="Y",
+        #     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        # ),
+        # "cylinderZ": sim_utils.CylinderCfg(
+        #     radius=0.01,
+        #     height=0.02,
+        #     axis="Z",
+        #     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        # ),
     }
 )
 
@@ -150,7 +150,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
         max_time_on_ground = 1.0
 
     min_roll_pitch = -torch.pi / 4.0
-    max_roll_pitch =  torch.pi /4.0
+    max_roll_pitch =  torch.pi / 4.0
     min_yaw = -torch.pi
     max_yaw =  torch.pi
     min_lin_vel_xy = -0.2
@@ -180,7 +180,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # Parameters from train.py or play.py
     use_simple_model = None
     prob_change = 0.5
-    proximity_threshold = 0.05
+    proximity_threshold = 0.10
     velocity_threshold = 100.0
     wait_time_s = 0.5
     rewards = {}
@@ -622,9 +622,9 @@ class QuadcopterEnv(DirectRLEnv):
         if debug_vis:
             if not hasattr(self, "goal_pos_visualizer"):
                 marker_cfg = GOAL_MARKER_CFG.copy()
-                marker_cfg.markers["cylinderX"].height = self.cfg.proximity_threshold
-                marker_cfg.markers["cylinderY"].height = self.cfg.proximity_threshold
-                marker_cfg.markers["cylinderZ"].height = self.cfg.proximity_threshold
+                # marker_cfg.markers["cylinderX"].height = self.cfg.proximity_threshold
+                # marker_cfg.markers["cylinderY"].height = self.cfg.proximity_threshold
+                # marker_cfg.markers["cylinderZ"].height = self.cfg.proximity_threshold
                 # -- goal pose
                 marker_cfg.prim_path = "/Visuals/Command/goal_position"
                 self.goal_pos_visualizer = VisualizationMarkers(marker_cfg)
