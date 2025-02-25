@@ -32,30 +32,18 @@ from omni.isaac.lab_assets import CRAZYFLIE_CFG  # isort: skip
 
 GOAL_MARKER_CFG = VisualizationMarkersCfg(
     markers={
+        # "sphere": sim_utils.UsdFileCfg(
+        #     usd_path="/home/lorenzo/Desktop/goal.usdc",
+        #     scale=(0.5, 0.5, 0.5),
+        # ),
         "sphere": sim_utils.SphereCfg(
             radius=0.01,
             visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
         ),
-        # "cylinderX": sim_utils.CylinderCfg(
-        #     radius=0.01,
-        #     height=0.02,
-        #     axis="X",
-        #     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
-        # ),
-        # "cylinderY": sim_utils.CylinderCfg(
-        #     radius=0.01,
-        #     height=0.02,
-        #     axis="Y",
-        #     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
-        # ),
-        # "cylinderZ": sim_utils.CylinderCfg(
-        #     radius=0.01,
-        #     height=0.02,
-        #     axis="Z",
-        #     visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
-        # ),
     }
 )
+
+
 
 class QuadcopterEnvWindow(BaseEnvWindow):
     """Window manager for the Quadcopter environment."""
@@ -149,6 +137,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
         exit()
         max_time_on_ground = 1.0
 
+    # values to randomly initialize the drone
     min_roll_pitch = -torch.pi / 4.0
     max_roll_pitch =  torch.pi / 4.0
     min_yaw = -torch.pi
@@ -259,7 +248,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = True
+            self.draw_plots = False
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -533,7 +522,7 @@ class QuadcopterEnv(DirectRLEnv):
             episode_time > self.cfg.max_time_on_ground
         )
         cond_max_h = self._robot.data.root_link_pos_w[:, 2] > self.cfg.max_altitude
-        cond_not_converged = self.first_approach & (episode_time > 4.0)
+        cond_not_converged = self.first_approach #& (episode_time > 4.0)
         died = cond_h_min_time | cond_max_h | cond_not_converged
 
         return died, time_out
@@ -622,9 +611,6 @@ class QuadcopterEnv(DirectRLEnv):
         if debug_vis:
             if not hasattr(self, "goal_pos_visualizer"):
                 marker_cfg = GOAL_MARKER_CFG.copy()
-                # marker_cfg.markers["cylinderX"].height = self.cfg.proximity_threshold
-                # marker_cfg.markers["cylinderY"].height = self.cfg.proximity_threshold
-                # marker_cfg.markers["cylinderZ"].height = self.cfg.proximity_threshold
                 # -- goal pose
                 marker_cfg.prim_path = "/Visuals/Command/goal_position"
                 self.goal_pos_visualizer = VisualizationMarkers(marker_cfg)
