@@ -180,9 +180,9 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # Parameters from train.py or play.py
     use_simple_model = None
     prob_change = 0.5
-    proximity_threshold = 0.2
+    proximity_threshold = 0.5
     velocity_threshold = 100.0
-    wait_time_s = 1.0
+    wait_time_s = 0.5
     rewards = {}
 
 class QuadcopterEnv(DirectRLEnv):
@@ -447,7 +447,6 @@ class QuadcopterEnv(DirectRLEnv):
         episode_time = self.episode_length_buf * self.cfg.sim.dt * self.cfg.decimation  # updated at each step
         close_to_goal = (distance_to_goal < self.cfg.proximity_threshold).to(self.device)
         initial_cond = self.first_approach & close_to_goal
-        # self.first_approach = ~initial_cond
         slow_speed = torch.linalg.norm(self._robot.data.root_com_lin_vel_b, dim=1) < self.cfg.velocity_threshold
         time_cond = (episode_time - self._previous_t) >= self.cfg.wait_time_s
 
