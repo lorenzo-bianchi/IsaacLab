@@ -259,7 +259,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = False
+            self.draw_plots = True
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -530,11 +530,14 @@ class QuadcopterEnv(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         time_out = self.episode_length_buf >= self.max_episode_length - 1
+        episode_time = (self.episode_length_buf - self._episode_length_buf_zero) * self.cfg.sim.dt * self.cfg.decimation
         cond_h_min_time = torch.logical_and(
             self._robot.data.root_link_pos_w[:, 2] < self.cfg.min_altitude, \
-            (self.episode_length_buf - self._episode_length_buf_zero) * self.cfg.sim.dt * self.cfg.decimation > self.cfg.max_time_on_ground
+            episode_time > self.cfg.max_time_on_ground
         )
-        died = torch.logical_or(cond_h_min_time, self._robot.data.root_link_pos_w[:, 2] > self.cfg.max_altitude)
+        cond_max_h = self._robot.data.root_link_pos_w[:, 2] > self.cfg.max_altitude
+        cond_not_converged = self.first_approach & episode_time > 10.0
+        died = cond_h_min_time | cond_max_h | cond_not_converged
 
         return died, time_out
 
