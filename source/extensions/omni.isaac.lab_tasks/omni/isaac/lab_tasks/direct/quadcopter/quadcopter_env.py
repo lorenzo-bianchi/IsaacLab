@@ -172,6 +172,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     proximity_threshold = 0.10
     velocity_threshold = 100.0
     wait_time_s = 0.5
+    max_time_no_approach = 6.0
     rewards = {}
 
 class QuadcopterEnv(DirectRLEnv):
@@ -248,7 +249,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = False
+            self.draw_plots = True
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -522,8 +523,8 @@ class QuadcopterEnv(DirectRLEnv):
             episode_time > self.cfg.max_time_on_ground
         )
         cond_max_h = self._robot.data.root_link_pos_w[:, 2] > self.cfg.max_altitude
-        #cond_not_converged = self.first_approach & (episode_time > 4.0)
-        died = cond_h_min_time | cond_max_h #| cond_not_converged
+        cond_not_converged = self.first_approach & (episode_time > self.cfg.max_time_no_approach)
+        died = cond_h_min_time | cond_max_h | cond_not_converged
 
         return died, time_out
 
