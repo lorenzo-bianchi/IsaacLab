@@ -138,7 +138,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     eps_tanh = 1e-3
     beta = 1.0         # 1.0 for no smoothing, 0.0 for no update
     min_altitude = 0.1
-    max_altitude = 2.0
+    max_altitude = 0.9
     reset_mode = "alt_no_att" # "alt_no_att", "alt_att", "ground"
     if reset_mode == "alt_no_att":
         max_time_on_ground = 0.0
