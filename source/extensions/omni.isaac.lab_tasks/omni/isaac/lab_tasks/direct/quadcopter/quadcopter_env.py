@@ -174,7 +174,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # CTBR Parameters
     kp_omega = 1        # default taken from RotorPy, needs to be checked on hardware. 
     kd_omega = 0.1      # default taken from RotorPy, needs to be checked on hardware.
-    body_rate_scale_xy = 5.0
+    body_rate_scale_xy = 1.0
     body_rate_scale_z = 2.5
 
     # Parameters from train.py or play.py
