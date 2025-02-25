@@ -463,9 +463,6 @@ class QuadcopterEnv(DirectRLEnv):
         # print(episode_time - self._previous_t)
         # input()
 
-        if give_reward.any():
-            print("Reward")
-
         if self.is_train:
             lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
             ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
