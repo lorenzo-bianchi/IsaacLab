@@ -138,7 +138,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     eps_tanh = 1e-3
     beta = 1.0         # 1.0 for no smoothing, 0.0 for no update
     min_altitude = 0.1
-    max_altitude = 0.09
+    max_altitude = 2.0
     reset_mode = "alt_no_att" # "alt_no_att", "alt_att", "ground"
     if reset_mode == "alt_no_att":
         max_time_on_ground = 0.0
@@ -463,6 +463,9 @@ class QuadcopterEnv(DirectRLEnv):
         # print(episode_time - self._previous_t)
         # input()
 
+        if give_reward.any():
+            print("Reward")
+
         if self.is_train:
             lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
             ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
@@ -533,7 +536,7 @@ class QuadcopterEnv(DirectRLEnv):
             episode_time > self.cfg.max_time_on_ground
         )
         cond_max_h = self._robot.data.root_link_pos_w[:, 2] > self.cfg.max_altitude
-        cond_not_converged = self.first_approach & (episode_time > 0.1)
+        cond_not_converged = self.first_approach & (episode_time > 4.0)
         died = cond_h_min_time | cond_max_h | cond_not_converged
 
         return died, time_out
