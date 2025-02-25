@@ -457,6 +457,15 @@ class QuadcopterEnv(DirectRLEnv):
         )
         ids_reward = torch.where(give_reward)[0]
 
+        # print(f"distance_to_goal: {distance_to_goal}")
+        # print(f"self.first_approach: {self.first_approach}")
+        # print(f"initial_cond: {initial_cond}, close_to_goal: {close_to_goal}, slow_speed: {slow_speed}, time_cond: {time_cond}, give_reward: {give_reward}")
+        # print(episode_time - self._previous_t)
+        # input()
+
+        if give_reward.any():
+            print("Reward")
+
         if self.is_train:
             lin_vel = torch.sum(torch.square(self._robot.data.root_com_lin_vel_b), dim=1)
             ang_vel = torch.sum(torch.square(self._robot.data.root_com_ang_vel_b), dim=1)
