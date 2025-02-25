@@ -105,7 +105,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     new_goal_reward_scale = 100.0
     cmd_smoothness_reward_scale = -1.0
     cmd_body_rates_reward_scale = -0.3
-    death_cost = -1000.0
+    death_cost = 1000.0
     rewards = {
         'lin_vel_reward_scale': lin_vel_reward_scale,
         'ang_vel_reward_scale': ang_vel_reward_scale,
