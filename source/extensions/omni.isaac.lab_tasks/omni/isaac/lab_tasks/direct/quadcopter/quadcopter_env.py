@@ -522,8 +522,8 @@ class QuadcopterEnv(DirectRLEnv):
             episode_time > self.cfg.max_time_on_ground
         )
         cond_max_h = self._robot.data.root_link_pos_w[:, 2] > self.cfg.max_altitude
-        cond_not_converged = self.first_approach #& (episode_time > 4.0)
-        died = cond_h_min_time | cond_max_h | cond_not_converged
+        #cond_not_converged = self.first_approach & (episode_time > 4.0)
+        died = cond_h_min_time | cond_max_h #| cond_not_converged
 
         return died, time_out
 
