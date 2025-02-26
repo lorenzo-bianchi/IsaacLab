@@ -169,7 +169,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # Parameters from train.py or play.py
     use_simple_model = None
     prob_change = 0.5
-    proximity_threshold = 0.05
+    proximity_threshold = 0.1
     velocity_threshold = 100.0
     wait_time_s = 0.5
     max_time_no_approach = 6.0
@@ -379,12 +379,12 @@ class QuadcopterEnv(DirectRLEnv):
 
         obs = torch.cat(
             [
-                self._robot.data.root_link_state_w[:, 3].unsqueeze(1),
-                desired_pos_b,
-                attitude_mat.view(attitude_mat.shape[0], -1),
-                self._robot.data.root_com_lin_vel_b,
-                self._robot.data.root_com_ang_vel_b,
-                self._previous_action,
+                self._robot.data.root_link_state_w[:, 2].unsqueeze(1),  # absolute height
+                desired_pos_b,                                          # relative desired position
+                attitude_mat.view(attitude_mat.shape[0], -1),           # attitude matrix
+                self._robot.data.root_com_lin_vel_b,                    # linear velocity
+                self._robot.data.root_com_ang_vel_b,                    # angular velocity
+                self._previous_action,                                  # last actions
             ],
             dim=-1,
         )
