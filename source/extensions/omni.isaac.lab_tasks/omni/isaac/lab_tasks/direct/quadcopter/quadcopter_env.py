@@ -209,6 +209,7 @@ class QuadcopterEnv(DirectRLEnv):
         self._last_distance_to_goal = torch.zeros(self.num_envs, device=self.device)
         self._n_laps = torch.zeros(self.num_envs, device=self.device)
         self._previous_t = torch.zeros(self.num_envs, device=self.device)
+        self._previous_t_change_point = torch.zeros(self.num_envs, device=self.device)
         self._episode_length_buf_zero = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
 
         self.closest_distance_to_goal = -torch.ones(self.num_envs, device=self.device)
@@ -249,7 +250,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = True
+            self.draw_plots = False
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -447,10 +448,12 @@ class QuadcopterEnv(DirectRLEnv):
         )
         ids_reward = torch.where(give_reward)[0]
 
+        # print(f"timer: {episode_time - self._previous_t}")
+        # print(f"time_since_change: {episode_time - self._previous_t_change_point}")
+        # print(f"episode_time: {episode_time}")
         # print(f"distance_to_goal: {distance_to_goal}")
         # print(f"self.first_approach: {self.first_approach}")
         # print(f"initial_cond: {initial_cond}, close_to_goal: {close_to_goal}, slow_speed: {slow_speed}, time_cond: {time_cond}, give_reward: {give_reward}")
-        # print(episode_time - self._previous_t)
         # input()
 
         if self.is_train:
@@ -512,6 +515,7 @@ class QuadcopterEnv(DirectRLEnv):
             self._desired_pos_w[ids_to_change, :2] += self._terrain.env_origins[ids_to_change, :2]
             self._desired_pos_w[ids_to_change, 2] = torch.zeros_like(self._desired_pos_w[ids_to_change, 2]).uniform_(0.5, 1.5)
             self._previous_t[ids_to_change] = episode_time[ids_to_change]
+            self._previous_t_change_point[ids_to_change] = episode_time[ids_to_change]
 
         return reward
 
@@ -523,7 +527,7 @@ class QuadcopterEnv(DirectRLEnv):
             episode_time > self.cfg.max_time_on_ground
         )
         cond_max_h = self._robot.data.root_link_pos_w[:, 2] > self.cfg.max_altitude
-        cond_not_converged = self.first_approach & (episode_time > self.cfg.max_time_no_approach)
+        cond_not_converged = self.first_approach & ((episode_time - self._previous_t_change_point) > self.cfg.max_time_no_approach)
         died = cond_h_min_time | cond_max_h | cond_not_converged
 
         return died, time_out
@@ -604,6 +608,7 @@ class QuadcopterEnv(DirectRLEnv):
         # Reset variables
         self._n_laps[env_ids] = 0
         self._previous_t[env_ids] = 0.0
+        self._previous_t_change_point[env_ids] = 0.0
         self.closest_distance_to_goal[env_ids] = -1.0
         self.first_approach[env_ids] = True
 
