@@ -169,7 +169,7 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     # Parameters from train.py or play.py
     use_simple_model = None
     prob_change = 0.5
-    proximity_threshold = 0.10
+    proximity_threshold = 0.05
     velocity_threshold = 100.0
     wait_time_s = 0.5
     max_time_no_approach = 6.0
@@ -250,7 +250,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = True
+            self.draw_plots = False
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
