@@ -372,7 +372,9 @@ class QuadcopterEnv(DirectRLEnv):
         self._robot.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
 
     def _get_observations(self) -> dict:
-        desired_pos_b, _ = subtract_frame_transforms(self._robot.data.root_link_state_w[:, :3], self._robot.data.root_link_state_w[:, 3:7], self._desired_pos_w)
+        desired_pos_b, _ = subtract_frame_transforms(self._robot.data.root_link_state_w[:, :3],     # t01
+                                                     self._robot.data.root_link_state_w[:, 3:7],    # q01
+                                                     self._desired_pos_w)                           # t02
 
         quat_w = self._robot.data.root_quat_w
         attitude_mat = matrix_from_quat(quat_w)
