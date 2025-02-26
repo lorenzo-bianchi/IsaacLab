@@ -74,8 +74,8 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
         3 +     # angular velocity
         3 +     # relative desired position
         9 +     # attitude matrix
-        4   #+     # last actions
-        # 1       # absolute height
+        4 +     # last actions
+        1       # absolute height
     )
     state_space = 0
     debug_vis = True
@@ -381,7 +381,7 @@ class QuadcopterEnv(DirectRLEnv):
 
         obs = torch.cat(
             [
-                # self._robot.data.root_link_state_w[:, 2].unsqueeze(1),  # absolute height
+                self._robot.data.root_link_state_w[:, 2].unsqueeze(1),  # absolute height
                 desired_pos_b,                                          # relative desired position
                 attitude_mat.view(attitude_mat.shape[0], -1),           # attitude matrix
                 self._robot.data.root_com_lin_vel_b,                    # linear velocity
