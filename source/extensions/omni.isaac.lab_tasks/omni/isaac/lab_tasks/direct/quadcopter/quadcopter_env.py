@@ -150,26 +150,23 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     max_ang_vel =  0.1
 
     # motor dynamics
-    arm_length = 0.043
-    k_eta = 2.3e-8
-    k_m = 7.8e-10
-    tau_m = 0.005
-    motor_speed_min = 0.0
-    motor_speed_max = 2500.0
-
-    kp_att = 1575 # 544
-    kd_att = 229.93 # 46.64
+    arm_length = 0.043          # same
+    k_eta = 2.3e-8              # same
+    k_m = 7.8e-10               # same
+    tau_m = 0.005               # same
+    motor_speed_min = 0.0       # same
+    motor_speed_max = 2500.0    # same
 
     # CTBR Parameters
-    kp_omega = 1        # default taken from RotorPy, needs to be checked on hardware. 
-    kd_omega = 0.1      # default taken from RotorPy, needs to be checked on hardware.
-    body_rate_scale_xy = 10.0
-    body_rate_scale_z = 2.5
+    kp_omega = 1.0      # default taken from RotorPy, needs to be checked on hardware. 
+    kd_omega = 0.0      # default taken from RotorPy, needs to be checked on hardware.
+    body_rate_scale_xy = 7.0
+    body_rate_scale_z = 3.0
 
     # Parameters from train.py or play.py
     use_simple_model = None
     prob_change = 0.5
-    proximity_threshold = 0.05
+    proximity_threshold = 0.1
     velocity_threshold = 100.0
     wait_time_s = 0.5
     max_time_no_approach = 6.0
@@ -250,7 +247,7 @@ class QuadcopterEnv(DirectRLEnv):
                 cfg.episode_length_s = 20.0
             else:
                 cfg.episode_length_s = 20.0
-            self.draw_plots = True
+            self.draw_plots = False
             self.max_len_deque = 100
             self.roll_history = deque(maxlen=self.max_len_deque)
             self.pitch_history = deque(maxlen=self.max_len_deque)
@@ -291,10 +288,13 @@ class QuadcopterEnv(DirectRLEnv):
         # Get specific body indices
         self._body_id = self._robot.find_bodies("body")[0]
         self._robot_mass = self._robot.root_physx_view.get_masses()[0].sum()
+        print(f"Robot mass: {self._robot_mass}")
         self._gravity_magnitude = torch.tensor(self.sim.cfg.gravity, device=self.device).norm()
         self._robot_weight = (self._robot_mass * self._gravity_magnitude).item()
 
         self.inertia_tensor = self._robot.root_physx_view.get_inertias()[0, self._body_id, :].view(-1, 3, 3).tile(self.num_envs, 1, 1).to(self.device)
+        print(f"Inertia tensor: {self.inertia_tensor}")
+        exit()
 
         # Add handle for debug visualization (this is set to a valid handle inside set_debug_vis)
         self.set_debug_vis(self.cfg.debug_vis)
@@ -328,14 +328,14 @@ class QuadcopterEnv(DirectRLEnv):
         
         omega_err = self._robot.data.root_ang_vel_b - omega_des
         omega_dot_err = (omega_err - self._previous_omega_err) / self.cfg.pd_loop_rate_hz
-        omega_dot = self.cfg.kp_omega * omega_err + self.cfg.kd_omega * omega_dot_err   # PD?
+        omega_dot = self.cfg.kp_omega * omega_err + self.cfg.kd_omega * omega_dot_err
         self._previous_omega_err = omega_err
 
         cmd_moment = torch.bmm(self.inertia_tensor, omega_dot.unsqueeze(2)).squeeze(2)
         return cmd_moment
 
     def _pre_physics_step(self, actions: torch.Tensor):
-        self._actions = actions.clone().clamp(-1.0, 1.0)
+        self._actions = actions.clone().clamp(-1.0, 1.0)    # actions come directly from the NN
 
         if self.cfg.use_simple_model:
             self._thrust[:, 0, 2] = self.cfg.thrust_to_weight * self._robot_weight * (self._actions[:, 0] + 1.0) / 2.0
@@ -354,7 +354,7 @@ class QuadcopterEnv(DirectRLEnv):
         if not self.cfg.use_simple_model:
             # Update PD loop at a lower rate
             if self.pd_loop_counter % self.cfg.pd_loop_decimation == 0:
-                self._wrench_des[:,1:] = self._get_moment_from_ctbr(self._actions)      ##
+                self._wrench_des[:, 1:] = self._get_moment_from_ctbr(self._actions)      ##
                 self._motor_speeds_des = self._compute_motor_speeds(self._wrench_des)   ##
 
             self.pd_loop_counter += 1
@@ -372,9 +372,9 @@ class QuadcopterEnv(DirectRLEnv):
         self._robot.set_external_force_and_torque(self._thrust, self._moment, body_ids=self._body_id)
 
     def _get_observations(self) -> dict:
-        desired_pos_b, _ = subtract_frame_transforms(self._robot.data.root_link_state_w[:, :3],     # t01
-                                                     self._robot.data.root_link_state_w[:, 3:7],    # q01
-                                                     self._desired_pos_w)                           # t02
+        desired_pos_b, _ = subtract_frame_transforms(self._robot.data.root_link_state_w[:, :3],
+                                                     self._robot.data.root_link_state_w[:, 3:7],
+                                                     self._desired_pos_w)
 
         quat_w = self._robot.data.root_quat_w
         attitude_mat = matrix_from_quat(quat_w)
