@@ -24,7 +24,6 @@ from omni.isaac.lab.utils.math import subtract_frame_transforms, quat_from_euler
 from matplotlib import pyplot as plt
 from collections import deque
 
-
 ##
 # Pre-defined configs
 ##
@@ -43,8 +42,6 @@ GOAL_MARKER_CFG = VisualizationMarkersCfg(
     }
 )
 
-
-
 class QuadcopterEnvWindow(BaseEnvWindow):
     """Window manager for the Quadcopter environment."""
 
@@ -62,7 +59,6 @@ class QuadcopterEnvWindow(BaseEnvWindow):
                 with self.ui_window_elements["debug_vstack"]:
                     # add command manager visualization
                     self._create_debug_vis_ui_element("targets", self.env)
-
 
 @configclass
 class QuadcopterEnvCfg(DirectRLEnvCfg):
@@ -150,12 +146,12 @@ class QuadcopterEnvCfg(DirectRLEnvCfg):
     max_ang_vel =  0.1
 
     # motor dynamics
-    arm_length = 0.043          # same
-    k_eta = 2.3e-8              # same
-    k_m = 7.8e-10               # same
-    tau_m = 0.005               # same
-    motor_speed_min = 0.0       # same
-    motor_speed_max = 2500.0    # same
+    arm_length = 0.043
+    k_eta = 2.3e-8
+    k_m = 7.8e-10
+    tau_m = 0.005
+    motor_speed_min = 0.0
+    motor_speed_max = 2500.0
 
     # CTBR Parameters
     kp_omega = 1.0      # default taken from RotorPy, needs to be checked on hardware. 

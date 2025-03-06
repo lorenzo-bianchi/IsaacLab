@@ -99,10 +99,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # reward scales
     lin_vel_reward_scale = -0.4
     ang_vel_reward_scale = -0.05
-    approaching_goal_reward_scale = 5000.0
+    approaching_goal_reward_scale = 4000.0
     convergence_goal_reward_scale = 0.0
     yaw_reward_scale = 0.0
-    new_goal_reward_scale = 900.0
+    new_goal_reward_scale = 700.0
     cmd_body_rates_reward_scale = 0.0
     cmd_smoothness_reward_scale = -1.0
     death_cost = -1000.0
@@ -175,3 +175,4 @@ if __name__ == "__main__":
     main()
     # close sim app
     simulation_app.close()
+
